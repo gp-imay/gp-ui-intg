@@ -1,3 +1,4 @@
+// src/App.tsx
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
 import { ScriptElement } from './components/ScriptElement';
@@ -7,6 +8,7 @@ import { RightSidebar } from './components/RightSidebar';
 import { TitlePageModal } from './components/TitlePageModal';
 import { SettingsModal } from './components/Settings';
 import { BeatSheetView } from './components/BeatSheet/BeatSheetView';
+import { AlertProvider } from './components/Alert';
 import { ViewMode, SidebarTab, TitlePage, ElementType, ScriptElement as ScriptElementType, getNextElementType, Comment, FormatSettings, DEFAULT_FORMAT_SETTINGS, SceneSuggestions, DEFAULT_SUGGESTIONS, UserProfile, DEFAULT_USER_PROFILES } from './types/screenplay';
 
 function App() {
@@ -18,6 +20,8 @@ function App() {
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false);
   const [hasOpenedAIAssistant, setHasOpenedAIAssistant] = useState(false);
+  const [currentSceneSegmentId, setCurrentSceneSegmentId] = useState<string | null>(null);
+  
   // Store the previous state of sidebars when switching to beats mode
   const [previousSidebarStates, setPreviousSidebarStates] = useState<{
     left: boolean;
@@ -68,12 +72,22 @@ function App() {
     setViewMode(mode);
   };
 
-  // Function to handle script generation from beats
-  const handleGenerateScript = () => {
-    // Here you would make your API call to generate the script
-    console.log('Generating script from beats...');
-    // Then switch to script view
-    setViewMode('script');
+  // Handle generated script elements from the BeatSheetView
+  const handleGeneratedScriptElements = (generatedElements: ScriptElementType[], sceneSegmentId: string) => {
+    // Save the scene segment ID
+    setCurrentSceneSegmentId(sceneSegmentId);
+    
+    // Replace empty elements with generated ones, or append them if there's content
+    if (elements.length === 1 && elements[0].content === '') {
+      setElements(generatedElements);
+    } else {
+      setElements([...elements, ...generatedElements]);
+    }
+    
+    // Select the first element of the generated script
+    if (generatedElements.length > 0) {
+      setSelectedElement(generatedElements[0].id);
+    }
   };
 
   const getSceneText = (content: string) => {
@@ -409,164 +423,167 @@ Copyright: ${titlePage.copyright}
   }, [suggestionsEnabled, isRightSidebarOpen]);
 
   return (
-    <div className="h-screen bg-gray-100 flex flex-col overflow-hidden">
-      <Header
-        title={title}
-        viewMode={viewMode}
-        setViewMode={handleViewModeChange}
-        setShowTitlePageModal={setShowTitlePageModal}
-        handleExport={handleExport}
-        openSettings={() => setShowSettingsModal(true)}
-        userProfiles={userProfiles}
-        activeProfile={activeProfile}
-        setActiveProfile={setActiveProfile}
-        suggestionsEnabled={suggestionsEnabled}
-        setSuggestionsEnabled={setSuggestionsEnabled}
-        onGenerateScript={handleGenerateScript}
-      />
+    <AlertProvider>
+      <div className="h-screen bg-gray-100 flex flex-col overflow-hidden">
+        <Header
+          title={title}
+          viewMode={viewMode}
+          setViewMode={handleViewModeChange}
+          setShowTitlePageModal={setShowTitlePageModal}
+          handleExport={handleExport}
+          openSettings={() => setShowSettingsModal(true)}
+          userProfiles={userProfiles}
+          activeProfile={activeProfile}
+          setActiveProfile={setActiveProfile}
+          suggestionsEnabled={suggestionsEnabled}
+          setSuggestionsEnabled={setSuggestionsEnabled}
+        />
 
-      <div className="flex-1 flex overflow-hidden">
-        {viewMode !== 'beats' && !isLeftSidebarOpen && (
-          <div className="absolute left-0 top-0 w-8 h-full z-20 flex items-center">
-            <button
-              onClick={() => setIsLeftSidebarOpen(true)}
-              className="absolute left-2 text-gray-400 p-2 rounded-full transition-all duration-200 hover:bg-white hover:shadow-lg hover:text-gray-600"
-            >
-              <ChevronRight className="h-5 w-5" />
-            </button>
-          </div>
-        )}
-
-        {viewMode !== 'beats' && (
-          <LeftSidebar
-            isOpen={isLeftSidebarOpen}
-            setIsOpen={setIsLeftSidebarOpen}
-            activeTab={activeTab}
-            setActiveTab={setActiveTab}
-            elements={elements}
-            getSceneText={getSceneText}
-            totalWords={elements.reduce((count, el) =>
-              count + (el.content.trim() ? el.content.trim().split(/\s+/).length : 0), 0
-            )}
-            totalPages={pages.length + 1}
-            comments={comments}
-            onDeleteComment={handleDeleteComment}
-            onCommentClick={handleCommentClick}
-          />
-        )}
-
-        {viewMode === 'beats' ? (
-          <div className="flex-1 overflow-hidden">
-            <BeatSheetView 
-              title={title} 
-              onSwitchToScript={() => setViewMode('script')}
-            />
-          </div>
-        ) : (
-          <div className="flex-1 overflow-y-auto">
-            <div className="screenplay-container py-8" style={{
-              width: `var(--page-width, ${formatSettings.pageLayout.width}in)`,
-            }}>
-              <div ref={contentRef} className="screenplay-content" style={{
-                padding: `var(--page-margin-top, ${formatSettings.pageLayout.marginTop}in) var(--page-margin-right, ${formatSettings.pageLayout.marginRight}in) var(--page-margin-bottom, ${formatSettings.pageLayout.marginBottom}in) var(--page-margin-left, ${formatSettings.pageLayout.marginLeft}in)`,
-                minHeight: `var(--page-height, ${formatSettings.pageLayout.height}in)`
-              }}>
-                {elements.map((element, index) => (
-                  <div
-                    key={element.id}
-                    className="element-wrapper"
-                    data-type={element.type}
-                    style={{
-                      textAlign: formatSettings.elements[element.type].alignment,
-                      marginTop: `var(--${element.type}-spacing-before, ${formatSettings.elements[element.type].spacingBefore}rem)`,
-                      marginBottom: `var(--${element.type}-spacing-after, ${formatSettings.elements[element.type].spacingAfter}rem)`
-                    }}
-                  >
-                    {pages.includes(index) && (
-                      <div className="page-break">
-                        <div className="page-number">Page {pages.findIndex(p => p === index) + 2}</div>
-                      </div>
-                    )}
-                    <ScriptElement
-                      ref={elementRefs.current[element.id]}
-                      {...element}
-                      isSelected={selectedElement === element.id}
-                      onChange={handleElementChange}
-                      onKeyDown={handleKeyDown}
-                      onFocus={setSelectedElement}
-                      onTypeChange={handleTypeChange}
-                      autoFocus={element.id === elements[elements.length - 1].id}
-                      onAIAssistClick={handleAIAssistClick}
-                      elements={elements}
-                      onAddComment={handleAddComment}
-                      activeCommentId={activeCommentId}
-                      comments={comments.filter(c =>
-                        // Only pass comments that belong to this element
-                        elementRefs.current[element.id]?.current?.containsCommentRange?.(c.from, c.to)
-                      )}
-                      formatSettings={formatSettings.elements[element.type]}
-                      suggestions={suggestionsEnabled ? suggestions : undefined}
-                      showAITools={suggestionsEnabled}
-                    />
-                  </div>
-                ))}
-              </div>
+        <div className="flex-1 flex overflow-hidden">
+          {viewMode !== 'beats' && !isLeftSidebarOpen && (
+            <div className="absolute left-0 top-0 w-8 h-full z-20 flex items-center">
+              <button
+                onClick={() => setIsLeftSidebarOpen(true)}
+                className="absolute left-2 text-gray-400 p-2 rounded-full transition-all duration-200 hover:bg-white hover:shadow-lg hover:text-gray-600"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Only show right sidebar toggle button when not in beats mode */}
-        {viewMode !== 'beats' && !isRightSidebarOpen && suggestionsEnabled && (
-          <div className="absolute right-0 top-0 w-8 h-full z-20 flex items-center">
-            <button
-              onClick={() => setIsRightSidebarOpen(true)}
-              className="absolute right-2 text-gray-400 p-2 rounded-full transition-all duration-200 hover:bg-white hover:shadow-lg hover:text-gray-600"
-            >
-              <div className="relative">
-                <ChevronLeft className="h-5 w-5" />
-                <div className="ai-icon-container absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 scale-75">
-                  <div className="ai-icon-pulse"></div>
-                  <Sparkles className="ai-icon-sparkle text-blue-500" />
+          {viewMode !== 'beats' && (
+            <LeftSidebar
+              isOpen={isLeftSidebarOpen}
+              setIsOpen={setIsLeftSidebarOpen}
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+              elements={elements}
+              getSceneText={getSceneText}
+              totalWords={elements.reduce((count, el) =>
+                count + (el.content.trim() ? el.content.trim().split(/\s+/).length : 0), 0
+              )}
+              totalPages={pages.length + 1}
+              comments={comments}
+              onDeleteComment={handleDeleteComment}
+              onCommentClick={handleCommentClick}
+            />
+          )}
+
+          {viewMode === 'beats' ? (
+            <div className="flex-1 overflow-hidden">
+              <BeatSheetView 
+                title={title} 
+                onSwitchToScript={() => setViewMode('script')}
+                onGeneratedScriptElements={handleGeneratedScriptElements}
+                currentSceneSegmentId={currentSceneSegmentId}
+              />
+            </div>
+          ) : (
+            <div className="flex-1 overflow-y-auto">
+              <div className="screenplay-container py-8" style={{
+                width: `var(--page-width, ${formatSettings.pageLayout.width}in)`,
+              }}>
+                <div ref={contentRef} className="screenplay-content" style={{
+                  padding: `var(--page-margin-top, ${formatSettings.pageLayout.marginTop}in) var(--page-margin-right, ${formatSettings.pageLayout.marginRight}in) var(--page-margin-bottom, ${formatSettings.pageLayout.marginBottom}in) var(--page-margin-left, ${formatSettings.pageLayout.marginLeft}in)`,
+                  minHeight: `var(--page-height, ${formatSettings.pageLayout.height}in)`
+                }}>
+                  {elements.map((element, index) => (
+                    <div
+                      key={element.id}
+                      className="element-wrapper"
+                      data-type={element.type}
+                      style={{
+                        textAlign: formatSettings.elements[element.type].alignment,
+                        marginTop: `var(--${element.type}-spacing-before, ${formatSettings.elements[element.type].spacingBefore}rem)`,
+                        marginBottom: `var(--${element.type}-spacing-after, ${formatSettings.elements[element.type].spacingAfter}rem)`
+                      }}
+                    >
+                      {pages.includes(index) && (
+                        <div className="page-break">
+                          <div className="page-number">Page {pages.findIndex(p => p === index) + 2}</div>
+                        </div>
+                      )}
+                      <ScriptElement
+                        ref={elementRefs.current[element.id]}
+                        {...element}
+                        isSelected={selectedElement === element.id}
+                        onChange={handleElementChange}
+                        onKeyDown={handleKeyDown}
+                        onFocus={setSelectedElement}
+                        onTypeChange={handleTypeChange}
+                        autoFocus={element.id === elements[elements.length - 1].id}
+                        onAIAssistClick={handleAIAssistClick}
+                        elements={elements}
+                        onAddComment={handleAddComment}
+                        activeCommentId={activeCommentId}
+                        comments={comments.filter(c =>
+                          // Only pass comments that belong to this element
+                          elementRefs.current[element.id]?.current?.containsCommentRange?.(c.from, c.to)
+                        )}
+                        formatSettings={formatSettings.elements[element.type]}
+                        suggestions={suggestionsEnabled ? suggestions : undefined}
+                        showAITools={suggestionsEnabled}
+                      />
+                    </div>
+                  ))}
                 </div>
               </div>
-            </button>
-          </div>
-        )}
+            </div>
+          )}
 
-        {/* Only show right sidebar when not in beats mode */}
-        {viewMode !== 'beats' && (
-          <RightSidebar
-            isOpen={isRightSidebarOpen}
-            setIsOpen={setIsRightSidebarOpen}
-            onApplySuggestion={handleApplySuggestion}
-            selectedElementId={selectedElement}
-          />
-        )}
+          {/* Only show right sidebar toggle button when not in beats mode */}
+          {viewMode !== 'beats' && !isRightSidebarOpen && suggestionsEnabled && (
+            <div className="absolute right-0 top-0 w-8 h-full z-20 flex items-center">
+              <button
+                onClick={() => setIsRightSidebarOpen(true)}
+                className="absolute right-2 text-gray-400 p-2 rounded-full transition-all duration-200 hover:bg-white hover:shadow-lg hover:text-gray-600"
+              >
+                <div className="relative">
+                  <ChevronLeft className="h-5 w-5" />
+                  <div className="ai-icon-container absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 scale-75">
+                    <div className="ai-icon-pulse"></div>
+                    <Sparkles className="ai-icon-sparkle text-blue-500" />
+                  </div>
+                </div>
+              </button>
+            </div>
+          )}
+
+          {/* Only show right sidebar when not in beats mode */}
+          {viewMode !== 'beats' && (
+            <RightSidebar
+              isOpen={isRightSidebarOpen}
+              setIsOpen={setIsRightSidebarOpen}
+              onApplySuggestion={handleApplySuggestion}
+              selectedElementId={selectedElement}
+            />
+          )}
+        </div>
+
+        <TitlePageModal
+          show={showTitlePageModal}
+          onClose={() => setShowTitlePageModal(false)}
+          titlePage={titlePage}
+          setTitlePage={setTitlePage}
+          setTitle={setTitle}
+        />
+
+        <SettingsModal
+          show={showSettingsModal}
+          onClose={() => setShowSettingsModal(false)}
+          settings={formatSettings}
+          setSettings={setFormatSettings}
+          suggestions={suggestions}
+          setSuggestions={setSuggestions}
+          userProfiles={userProfiles}
+          setUserProfiles={setUserProfiles}
+          activeProfile={activeProfile}
+          setActiveProfile={setActiveProfile}
+          suggestionsEnabled={suggestionsEnabled}
+          setSuggestionsEnabled={setSuggestionsEnabled}
+        />
       </div>
-
-      <TitlePageModal
-        show={showTitlePageModal}
-        onClose={() => setShowTitlePageModal(false)}
-        titlePage={titlePage}
-        setTitlePage={setTitlePage}
-        setTitle={setTitle}
-      />
-
-      <SettingsModal
-        show={showSettingsModal}
-        onClose={() => setShowSettingsModal(false)}
-        settings={formatSettings}
-        setSettings={setFormatSettings}
-        suggestions={suggestions}
-        setSuggestions={setSuggestions}
-        userProfiles={userProfiles}
-        setUserProfiles={setUserProfiles}
-        activeProfile={activeProfile}
-        setActiveProfile={setActiveProfile}
-        suggestionsEnabled={suggestionsEnabled}
-        setSuggestionsEnabled={setSuggestionsEnabled}
-      />
-    </div>
+    </AlertProvider>
   );
 }
 

@@ -1,3 +1,5 @@
+// Always enable the generate script button
+const allBeatsHaveScenes = true;// src/components/BeatSheet/BeatSheetView.tsx
 import React, { useEffect, useRef, useState } from 'react';
 import { RefreshCcw, AlertCircle, FileText } from 'lucide-react';
 import { BeatCard } from './BeatCard';
@@ -5,20 +7,33 @@ import { ScenePanel } from './ScenePanel';
 import { BeatArrows } from './BeatArrows';
 import { useStoryStore } from '../../store/storyStore';
 import { Beat, GeneratedScenesResponse } from '../../types/beats';
+import { api } from '../../services/api';
+import { useAlert } from '../Alert';
+import { ScriptElement, ElementType } from '../../types/screenplay';
 
 const ACTS = ['Act 1', 'Act 2A', 'Act 2B', 'Act 3'] as const;
 
 interface BeatSheetViewProps {
   title?: string;
   onSwitchToScript?: () => void;
+  onGeneratedScriptElements?: (elements: ScriptElement[], sceneSegmentId: string) => void;
+  currentSceneSegmentId?: string | null;
 }
 
-export function BeatSheetView({ title = "Untitled Screenplay", onSwitchToScript }: BeatSheetViewProps) {
+export function BeatSheetView({ 
+  title = "Untitled Screenplay", 
+  onSwitchToScript,
+  onGeneratedScriptElements,
+  currentSceneSegmentId
+}: BeatSheetViewProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const [selectedBeat, setSelectedBeat] = useState<Beat | null>(null);
   const [showTooltip, setShowTooltip] = useState(false);
   const [headerHeight, setHeaderHeight] = useState(0);
+  const [isGeneratingScript, setIsGeneratingScript] = useState(false);
+  const [sceneSegmentIdState, setSceneSegmentIdState] = useState<string | null>(null);
+  const { showAlert } = useAlert();
   
   const { 
     premise, 
@@ -33,7 +48,12 @@ export function BeatSheetView({ title = "Untitled Screenplay", onSwitchToScript 
     actGenerationErrors
   } = useStoryStore();
 
-  const allBeatsHaveScenes = true;
+  useEffect(() => {
+    // Initialize sceneSegmentIdState from props
+    if (currentSceneSegmentId) {
+      setSceneSegmentIdState(currentSceneSegmentId);
+    }
+  }, [currentSceneSegmentId]);
 
   useEffect(() => {
     console.log('Current beats:', beats);
@@ -53,12 +73,73 @@ export function BeatSheetView({ title = "Untitled Screenplay", onSwitchToScript 
     }
   }, []);
 
-  const handleGenerateScript = () => {
-    console.log('Generating script...');
-    if (onSwitchToScript) {
-      onSwitchToScript();
+  const handleGenerateScript = async () => {
+    setIsGeneratingScript(true);
+    try {
+      console.log('Generating script...');
+      const response = await api.generateScript();
+      
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to generate script');
+      }
+      
+      // Check if this scene segment is already in the script
+      if (response.scene_segment_id && response.scene_segment_id === sceneSegmentIdState) {
+        // Scene already exists in the script, prompt to generate next scene instead
+        showAlert('info', 'This scene is already in your script. You can generate the next scene once this one is complete.');
+        
+        // Switch to script view to show the existing scene
+        if (onSwitchToScript) {
+          onSwitchToScript();
+        }
+        return;
+      }
+      
+      if (response.generated_segment?.components) {
+        // Convert the API response components to ScriptElement format
+        const scriptElements = api.convertSceneComponentsToElements(
+          response.generated_segment.components
+        );
+        
+        // Save the current scene segment ID
+        if (response.scene_segment_id) {
+          setSceneSegmentIdState(response.scene_segment_id);
+        }
+        
+        // Pass the generated elements and scene ID to the parent component
+        if (onGeneratedScriptElements && response.scene_segment_id) {
+          // Make sure we're always passing both parameters
+          onGeneratedScriptElements(
+            scriptElements,
+            response.scene_segment_id
+          );
+        } else if (onGeneratedScriptElements) {
+          // If for some reason scene_segment_id is missing, use a fallback ID
+          const fallbackId = `generated-${Date.now()}`;
+          console.warn('Missing scene_segment_id in response, using fallback:', fallbackId);
+          onGeneratedScriptElements(
+            scriptElements,
+            fallbackId
+          );
+        }
+        
+        // Switch to script view
+        if (onSwitchToScript) {
+          onSwitchToScript();
+        }
+        
+        showAlert('success', 'Script generated successfully!');
+      } else {
+        throw new Error('No script components were generated');
+      }
+    } catch (error) {
+      console.error('Error generating script:', error);
+      showAlert('error', error instanceof Error ? error.message : 'Failed to generate script');
+    } finally {
+      setIsGeneratingScript(false);
     }
   };
+  
 
   const handleGenerateScenes = async (beatId: string): Promise<GeneratedScenesResponse> => {
     try {
@@ -92,28 +173,28 @@ export function BeatSheetView({ title = "Untitled Screenplay", onSwitchToScript 
       <div ref={headerRef} className="p-4 flex justify-center bg-white border-b">
         <div className="relative">
           <button
-            onClick={allBeatsHaveScenes ? handleGenerateScript : undefined}
-            onMouseEnter={() => !allBeatsHaveScenes && setShowTooltip(true)}
-            onMouseLeave={() => setShowTooltip(false)}
+            onClick={handleGenerateScript}
+            disabled={isGeneratingScript}
             className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm ${
-              allBeatsHaveScenes
-                ? 'text-white bg-green-600 hover:bg-green-700'
-                : 'text-gray-500 bg-gray-200 cursor-not-allowed'
+              isGeneratingScript
+                ? 'text-gray-500 bg-gray-200 cursor-not-allowed'
+                : 'text-white bg-green-600 hover:bg-green-700'
             }`}
           >
-            <FileText className="w-4 h-4 mr-2" />
-            Generate Script
+            {isGeneratingScript ? (
+              <>
+                <RefreshCcw className="w-4 h-4 mr-2 animate-spin" />
+                Generating Script...
+              </>
+            ) : (
+              <>
+                <FileText className="w-4 h-4 mr-2" />
+                Generate Script
+              </>
+            )}
           </button>
           
-          {showTooltip && !allBeatsHaveScenes && (
-            <div className="absolute right-0 transform top-full mb-2 w-64 p-2 bg-gray-800 text-white text-xs rounded shadow-lg z-50 animate-fade-in">
-              <div className="flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-yellow-400 flex-shrink-0 mt-0.5" />
-                <span>Generate scenes for all beats before generating the script</span>
-              </div>
-              <div className="absolute left-1/2 transform -translate-x-1/2 top-full h-2 w-2 border-l-8 border-r-8 border-t-8 border-transparent border-t-gray-800"></div>
-            </div>
-          )}
+          {/* Removed tooltip since button is always enabled */}
         </div>
       </div>
 
@@ -186,7 +267,6 @@ export function BeatSheetView({ title = "Untitled Screenplay", onSwitchToScript 
                         onValidate={validateBeat}
                         onGenerateScenes={handleGenerateScenes}
                         onShowScenes={(event) => {
-                          // event.preventDefault();
                           handleShowScenes(beat);
                         }}
                         isSelected={selectedBeat?.id === beat.id}
