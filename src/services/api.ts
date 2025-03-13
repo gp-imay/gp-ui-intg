@@ -1,17 +1,24 @@
 // src/services/api.ts
 import { ApiBeat, GeneratedScenesResponse, Scenes } from '../types/beats';
 import { ScriptElement, ElementType } from '../types/screenplay';
+import { supabase } from '../lib/supabase';
 
 const API_BASE_URL = 'http://localhost:8000/api/v1';
 
-// Get the token from the environment or use a default token
-// In a real application, this would come from an authentication service
-const getToken = () => {
-  // This is the token from the existing implementation
-  const defaultToken = 'eyJhbGciOiJIUzI1NiIsImtpZCI6ImJPb1NwQjZjMEVUNmpVMmMiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL2hhd3Zna2lybG1kZ2JkbXV0dXFoLnN1cGFiYXNlLmNvL2F1dGgvdjEiLCJzdWIiOiI3MGJiZDRlMy1kNWRjLTQzMDMtYTcyYy02YjM0YjNiNGQ0MWYiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzQxODEzOTA5LCJpYXQiOjE3NDE4MTAzMDksImVtYWlsIjoiaW1heWF5b2dpQGdtYWlsLmNvbSIsInBob25lIjoiIiwiYXBwX21ldGFkYXRhIjp7InByb3ZpZGVyIjoiZW1haWwiLCJwcm92aWRlcnMiOlsiZW1haWwiXX0sInVzZXJfbWV0YWRhdGEiOnsiZW1haWwiOiJpbWF5YXlvZ2lAZ21haWwuY29tIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsImZ1bGxfbmFtZSI6IkltYXlhIiwicGhvbmVfdmVyaWZpZWQiOmZhbHNlLCJzdWIiOiI3MGJiZDRlMy1kNWRjLTQzMDMtYTcyYy02YjM0YjNiNGQ0MWYifSwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJwYXNzd29yZCIsInRpbWVzdGFtcCI6MTc0MTgxMDMwOX1dLCJzZXNzaW9uX2lkIjoiYWVhNzAwZTMtYzVlMC00MTYzLWFhMjQtN2YxNTIxNTRhM2Y3IiwiaXNfYW5vbnltb3VzIjpmYWxzZX0.6vmWF-mFahaCYHbVt8dL6WMXGoWAu3XIDoc531KyLnc';
+// Updated getToken function to use Supabase session
+const getToken = async () => {
+  // Try to get the token from the current Supabase session
+  const { data: { session } } = await supabase.auth.getSession();
   
-  // If there's a token in localStorage or session storage, use that instead
+  if (session?.access_token) {
+    return session.access_token;
+  }
+  
+  // Fallback to localStorage or sessionStorage if no active session
   const storedToken = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+  
+  // Final fallback to a default token (only for development/testing)
+  const defaultToken = 'eyJhbGciOiJIUzI1NiIsImtpZCI6ImJPb1NwQjZjMEVUNmpVMmMiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL2hhd3Zna2lybG1kZ2JkbXV0dXFoLnN1cGFiYXNlLmNvL2F1dGgvdjEiLCJzdWIiOiI3MGJiZDRlMy1kNWRjLTQzMDMtYTcyYy02YjM0YjNiNGQ0MWYiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzQxODEzOTA5LCJpYXQiOjE3NDE4MTAzMDksImVtYWlsIjoiaW1heWF5b2dpQGdtYWlsLmNvbSIsInBob25lIjoiIiwiYXBwX21ldGFkYXRhIjp7InByb3ZpZGVyIjoiZW1haWwiLCJwcm92aWRlcnMiOlsiZW1haWwiXX0sInVzZXJfbWV0YWRhdGEiOnsiZW1haWwiOiJpbWF5YXlvZ2lAZ21haWwuY29tIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsImZ1bGxfbmFtZSI6IkltYXlhIiwicGhvbmVfdmVyaWZpZWQiOmZhbHNlLCJzdWIiOiI3MGJiZDRlMy1kNWRjLTQzMDMtYTcyYy02YjM0YjNiNGQ0MWYifSwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJwYXNzd29yZCIsInRpbWVzdGFtcCI6MTc0MTgxMDMwOX1dLCJzZXNzaW9uX2lkIjoiYWVhNzAwZTMtYzVlMC00MTYzLWFhMjQtN2YxNTIxNTRhM2Y3IiwiaXNfYW5vbnltb3VzIjpmYWxzZX0.6vmWF-mFahaCYHbVt8dL6WMXGoWAu3XIDoc531KyLnc';
   
   return storedToken || defaultToken;
 };
@@ -116,9 +123,10 @@ function generateUniqueId(prefix: string = 'comp'): string {
 }
 
 export const api = {
+  // Updated methods to use async getToken
   async getBeats(scriptId: string = '73638436-9d3d-4bc4-89ef-9d7b9e5141df'): Promise<ApiBeat[]> {
     try {
-      const token = getToken();
+      const token = await getToken();
       const response = await fetch(
         `${API_BASE_URL}/beats/${scriptId}/beatsheet`,
         {
@@ -146,7 +154,7 @@ export const api = {
 
   async updateBeat(beatId: string, payload: UpdateBeatPayload): Promise<ApiBeat> {
     try {
-      const token = getToken();
+      const token = await getToken();
       const response = await fetch(
         `${API_BASE_URL}/beats/${beatId}`,
         {
@@ -175,7 +183,7 @@ export const api = {
 
   async generateScenes(beatId: string): Promise<GeneratedScenesResponse> {
     try {
-      const token = getToken();
+      const token = await getToken();
       const response = await fetch(
         `${API_BASE_URL}/scene-descriptions/beat`,
         {
@@ -204,7 +212,7 @@ export const api = {
   
   async updateSceneDescription(sceneId: string, scene_detail_for_ui: string): Promise<Scenes> {
     try {
-      const token = getToken();
+      const token = await getToken();
       const response = await fetch(
         `${API_BASE_URL}/scene-descriptions/${sceneId}`,
         {
@@ -232,7 +240,7 @@ export const api = {
 
   async generateScenesForAct(act: string, scriptId: string = '73638436-9d3d-4bc4-89ef-9d7b9e5141df'): Promise<ActScenesResponse> {
     try {
-      const token = getToken();
+      const token = await getToken();
       const payload: GenerateScenesForActPayload = {
         script_id: scriptId,
         act: act.toLowerCase().replace(' ', '_') // Convert "Act 1" to "act_1"
@@ -266,7 +274,7 @@ export const api = {
 
   async generateScript(scriptId: string = '73638436-9d3d-4bc4-89ef-9d7b9e5141df'): Promise<SceneSegmentGenerationResponse> {
     try {
-      const token = getToken();
+      const token = await getToken();
       const response = await fetch(
         `${API_BASE_URL}/scene-segments/ai/get-or-generate-first`,
         {
@@ -293,10 +301,9 @@ export const api = {
     }
   },
 
-  // New method to fetch script segments
   async getScriptSegments(scriptId: string, skip: number = 0, limit: number = 10): Promise<SegmentListResponse> {
     try {
-      const token = getToken();
+      const token = await getToken();
       console.log(`Fetching script segments for ${scriptId}, skip=${skip}, limit=${limit}`);
       
       const response = await fetch(
