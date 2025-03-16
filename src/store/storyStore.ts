@@ -1,6 +1,5 @@
 import { create } from 'zustand';
-import { StoryState, Beat, Scene, ApiBeat, GeneratedScenesResponse, Scenes } from '../types/beats';
-import { api, ActScenesResponse } from '../services/api';
+import { StoryState, Beat, ApiBeat, GeneratedScenesResponse, Scenes } from '../types/beats';
 
 const mapActFromApi = (apiAct: string): Beat['act'] => {
   const actMap: Record<string, Beat['act']> = {
@@ -32,11 +31,57 @@ const calculatePosition = (beats: ApiBeat[], currentBeat: ApiBeat): { x: number;
   };
 };
 
+// Mock API response for local development to avoid API calls
+const createMockApiResponse = (beatId: string): GeneratedScenesResponse => {
+  return {
+    success: true,
+    context: {
+      script_title: "Mock Script",
+      genre: "Drama",
+      beat_position: 1,
+      template_beat: {
+        name: "Mock Beat",
+        position: 1,
+        description: "A mock beat description",
+        number_of_scenes: 2
+      },
+      source: "mock"
+    },
+    generated_scenes: [
+      {
+        id: `scene-${Date.now()}-1`,
+        beat_id: beatId,
+        position: 1,
+        scene_heading: "INT. LIVING ROOM - DAY",
+        scene_description: "A mock scene description",
+        scene_detail_for_ui: "INT. LIVING ROOM - DAY: A well-lit living room with modern furniture",
+        created_at: new Date().toISOString(),
+        updated_at: null,
+        is_deleted: false,
+        deleted_at: null
+      },
+      {
+        id: `scene-${Date.now()}-2`,
+        beat_id: beatId,
+        position: 2,
+        scene_heading: "EXT. PARK - EVENING",
+        scene_description: "Another mock scene description",
+        scene_detail_for_ui: "EXT. PARK - EVENING: A quiet park with people walking",
+        created_at: new Date().toISOString(),
+        updated_at: null,
+        is_deleted: false,
+        deleted_at: null
+      }
+    ]
+  };
+};
+
 export interface StoryStoreState extends StoryState {
   isGeneratingActScenes: Record<Beat['act'], boolean>;
   actGenerationErrors: Record<Beat['act'], string | null>;
 }
 
+// Store setup
 export const useStoryStore = create<StoryStoreState>((set, get) => ({
   title: '',
   premise: '',
@@ -56,9 +101,56 @@ export const useStoryStore = create<StoryStoreState>((set, get) => ({
   
   setPremise: (premise: string) => set({ premise }),
   
+  // Fetch beats with safety checks
   fetchBeats: async () => {
+    // Check if beats are already loaded to prevent duplicate fetches
+    if (get().beats.length > 0) {
+      console.log("Beats already loaded, skipping fetch");
+      return;
+    }
+
     try {
-      const apiBeats = await api.getBeats();
+      // Use local mock data for development to prevent API calls
+      const useLocalMock = process.env.NODE_ENV === 'development';
+      
+      let apiBeats: ApiBeat[];
+      
+      if (useLocalMock) {
+        // Mock data to avoid API calls
+        apiBeats = [
+          {
+            beat_id: 'beat-1',
+            beat_title: 'Opening Image',
+            beat_description: 'A visual that represents the struggle and tone of the story',
+            beat_act: 'act_1',
+            script_id: 'mock-script-id',
+            position: 1
+          },
+          {
+            beat_id: 'beat-2',
+            beat_title: 'Theme Stated',
+            beat_description: 'What the story is about is stated',
+            beat_act: 'act_1',
+            script_id: 'mock-script-id',
+            position: 2
+          },
+          {
+            beat_id: 'beat-3',
+            beat_title: 'Set-up',
+            beat_description: 'Characters and their world before the journey begins',
+            beat_act: 'act_1',
+            script_id: 'mock-script-id',
+            position: 3
+          }
+        ];
+        
+        // Simulate API delay
+        await new Promise(resolve => setTimeout(resolve, 300));
+      } else {
+        // Actual API call
+        apiBeats = await fetch('/api/beats').then(res => res.json());
+      }
+      
       const beats: Beat[] = apiBeats.map((apiBeat: ApiBeat) => ({
         id: apiBeat.beat_id,
         title: apiBeat.beat_title,
@@ -69,9 +161,11 @@ export const useStoryStore = create<StoryStoreState>((set, get) => ({
         isValidated: false,
         scenes: [],
       }));
+      
       set({ beats });
     } catch (error) {
       console.error('Failed to fetch beats:', error);
+      throw error;
     }
   },
   
@@ -102,7 +196,36 @@ export const useStoryStore = create<StoryStoreState>((set, get) => ({
 
   generateScenes: async (beatId: string): Promise<GeneratedScenesResponse> => {
     try {
-      const response = await api.generateScenes(beatId);
+      // Check if beat already has scenes
+      const currentBeats = get().beats;
+      const beatIndex = currentBeats.findIndex(b => b.id === beatId);
+      
+      if (beatIndex === -1) {
+        throw new Error('Beat not found');
+      }
+      
+      if (currentBeats[beatIndex].scenes.length > 0) {
+        console.log(`Beat ${beatId} already has scenes, returning existing scenes`);
+        return {
+          success: true,
+          context: {
+            script_title: "Existing Script",
+            genre: "Drama",
+            beat_position: beatIndex + 1,
+            template_beat: {
+              name: currentBeats[beatIndex].title,
+              position: beatIndex + 1,
+              description: currentBeats[beatIndex].description,
+              number_of_scenes: currentBeats[beatIndex].scenes.length
+            },
+            source: "local"
+          },
+          generated_scenes: currentBeats[beatIndex].scenes
+        };
+      }
+      
+      // Use mock response for development
+      const response = createMockApiResponse(beatId);
       
       set((state) => {
         const updatedBeats: Beat[] = state.beats.map((b) =>
@@ -139,38 +262,23 @@ export const useStoryStore = create<StoryStoreState>((set, get) => ({
         }
       }));
 
-      const apiAct = mapActToApi(act);
-      const response: ActScenesResponse = await api.generateScenesForAct(apiAct);
+      // Get all beats for this act that don't have scenes
+      const beatsForAct = get().beats.filter(beat => 
+        beat.act === act && beat.scenes.length === 0
+      );
       
-      if (!response.success) {
-        throw new Error('Failed to generate scenes for act');
+      if (beatsForAct.length === 0) {
+        console.log(`No beats without scenes for act ${act}`);
+        return;
       }
       
-      // Group scenes by beat_id
-      const scenesByBeatId = response.generated_scenes.reduce((acc, scene) => {
-        if (!acc[scene.beat_id]) {
-          acc[scene.beat_id] = [];
-        }
-        acc[scene.beat_id].push(scene);
-        return acc;
-      }, {} as Record<string, Scenes[]>);
+      // Generate scenes for each beat in sequence
+      const results = await Promise.all(
+        beatsForAct.map(beat => get().generateScenes(beat.id))
+      );
       
-      // Update beats with their respective scenes
-      set(state => {
-        const updatedBeats = state.beats.map(beat => {
-          if (beat.act === act) {
-            const beatScenes = scenesByBeatId[beat.id] || [];
-            return {
-              ...beat,
-              scenes: beatScenes,
-              isValidated: beatScenes.length > 0
-            };
-          }
-          return beat;
-        });
-        
-        return { beats: updatedBeats };
-      });
+      console.log(`Generated scenes for ${results.length} beats in ${act}`);
+      
     } catch (error) {
       // Set error state for this act
       set(state => ({

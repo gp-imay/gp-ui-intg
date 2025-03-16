@@ -16,6 +16,9 @@ interface HeaderProps {
   suggestionsEnabled?: boolean;
   setSuggestionsEnabled?: (enabled: boolean) => void;
   onGenerateScript?: () => void;
+  showGenerateScript?: boolean;
+  // New prop for controlling UI based on script state
+  scriptState: 'empty' | 'beatsLoaded' | 'firstSceneGenerated' | 'scriptGenerated' |  'multipleScenes' | 'uploaded' | 'complete';
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -30,12 +33,14 @@ export const Header: React.FC<HeaderProps> = ({
   setActiveProfile,
   suggestionsEnabled,
   setSuggestionsEnabled,
-  onGenerateScript
+  onGenerateScript,
+  showGenerateScript,
+  scriptState,
 }) => {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
   const activeUser = userProfiles.find(profile => profile.id === activeProfile);
-  
+  // let showGenerateScript = False;
   // For beats view, check if all beats have scenes
   const { beats } = useStoryStore();
   const allBeatsHaveScenes = beats.length > 0 && beats.every(beat => beat.scenes.length > 0);
@@ -54,6 +59,9 @@ export const Header: React.FC<HeaderProps> = ({
       setViewMode('script');
     }
   };
+
+  // Determine if the script is empty so we can hide certain features
+  const isScriptEmpty = scriptState === 'empty';
 
   return (
     <header className="bg-white shadow-sm z-10 flex-none">
@@ -77,46 +85,48 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        <div className="flex-1 flex justify-center">
-          <div className="flex items-center bg-gray-100 p-1 rounded-lg">
-            <button
-              onClick={() => setViewMode('beats')}
-              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200 ${
-                viewMode === 'beats'
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Beats
-            </button>
-            <button
-              onClick={() => setViewMode('script')}
-              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200 ${
-                viewMode === 'script'
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Script
-            </button>
-            <button
-              onClick={() => setViewMode('boards')}
-              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200 ${
-                viewMode === 'boards'
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Boards
-            </button>
+        {/* Only show view mode selector when the script is not empty */}
+        {!isScriptEmpty && (
+          <div className="flex-1 flex justify-center">
+            <div className="flex items-center bg-gray-100 p-1 rounded-lg">
+              <button
+                onClick={() => setViewMode('beats')}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200 ${
+                  viewMode === 'beats'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Beats
+              </button>
+              <button
+                onClick={() => setViewMode('script')}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200 ${
+                  viewMode === 'script'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Script
+              </button>
+              <button
+                onClick={() => setViewMode('boards')}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200 ${
+                  viewMode === 'boards'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Boards
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="w-[300px] flex-shrink-0 flex items-center justify-end space-x-4">
-          {/* Show Generate Script button when in beats mode */}
-          {viewMode === 'beats' && (
+          {/* Show Generate Script button when in beats mode and script is not empty */}
+          {/* {!isScriptEmpty && viewMode === 'beats' && (
             <div className="relative">
-              {/* Tooltip for disabled button */}
               {showTooltip && !allBeatsHaveScenes && (
                 <div className="absolute left-1/2 transform -translate-x-1/2 bottom-full mb-2 w-64 p-2 bg-gray-800 text-white text-xs rounded shadow-lg z-50">
                   <div className="flex items-start gap-2">
@@ -126,24 +136,38 @@ export const Header: React.FC<HeaderProps> = ({
                   <div className="absolute left-1/2 transform -translate-x-1/2 top-full h-2 w-2 border-t-4 border-l-4 border-r-4 border-transparent border-t-gray-800"></div>
                 </div>
               )}
+              <button
+                onClick={handleGenerateScriptClick}
+                onMouseEnter={() => setShowTooltip(true)}
+                onMouseLeave={() => setShowTooltip(false)}
+                className="px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200 bg-blue-600 text-white hover:bg-blue-700 shadow-sm"
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                {showGenerateScript ? 'Generate Script' : 'Generate Script'}
+              </button>
             </div>
+          )} */}
+          
+          {/* Only show Settings and Export when the script is not empty */}
+          {!isScriptEmpty && (
+            <>
+              <button
+                onClick={openSettings}
+                className="p-2 rounded-full text-gray-600 hover:bg-gray-100 hover:text-blue-600 transition-colors"
+                title="Settings"
+              >
+                <Settings className="h-5 w-5" />
+              </button>
+              
+              <button
+                onClick={handleExport}
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Export
+              </button>
+            </>
           )}
-          
-          <button
-            onClick={openSettings}
-            className="p-2 rounded-full text-gray-600 hover:bg-gray-100 hover:text-blue-600 transition-colors"
-            title="Settings"
-          >
-            <Settings className="h-5 w-5" />
-          </button>
-          
-          <button
-            onClick={handleExport}
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700"
-          >
-            <Download className="h-4 w-4 mr-2" />
-            Export
-          </button>
 
           <div className="relative">
             <button

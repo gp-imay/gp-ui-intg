@@ -26,6 +26,7 @@ export interface ScriptElement {
   type: ElementType;
   content: string;
   comments?: Comment[];
+  sceneSegmentId?: string; // Added to track which scene segment this element belongs to
 }
 
 export interface ElementFormat {
@@ -75,6 +76,82 @@ export interface UserProfile {
     autoSave: boolean;
     formatSettings: FormatSettings;
   };
+}
+
+// Define script creation modes to match backend enum
+export type ScriptCreationMethod = 
+  | 'FROM_SCRATCH'  // Manual creation
+  | 'WITH_AI'       // AI-assisted creation
+  | 'UPLOAD';       // Imported from file
+
+// Map frontend-friendly names to backend enum values
+export const CREATION_METHOD_MAP = {
+  manual: 'FROM_SCRATCH' as ScriptCreationMethod,
+  ai: 'WITH_AI' as ScriptCreationMethod,
+  upload: 'UPLOAD' as ScriptCreationMethod
+};
+
+// Define script states for state machine
+export type ScriptState = 
+  | 'empty'                // No content yet
+  | 'beatsLoaded'          // Beats generated but no scenes
+  | 'firstSceneGenerated'  // First scene has been generated
+  | 'multipleScenes'       // Multiple scenes exist
+  | 'uploaded'             // Script was uploaded from file
+  | 'complete';            // Script is complete
+
+// Interface for script metadata
+export interface ScriptMetadata {
+  id: string;
+  title: string;
+  creationMethod: ScriptCreationMethod;
+  createdAt: string;
+  updatedAt: string;
+  isAiGenerated: boolean;
+  isUploaded?: boolean;
+  currentSceneSegmentId?: string;
+  uploadedFileType?: 'pdf' | 'fdx'; // Track uploaded file type if applicable
+}
+
+// Interface for script state context
+export interface ScriptStateContext {
+  scriptId: string;
+  creationMethod: ScriptCreationMethod;
+  hasBeats: boolean;
+  scenesCount: number;
+  isComplete: boolean;
+  currentSceneSegmentId?: string; // Use undefined instead of null
+  uploadInfo?: {
+    fileType: string;
+    fileName: string;
+    uploadDate: string;
+  };
+}
+
+// Interface for state machine actions
+export interface ScriptStateActions {
+  generateBeats: () => Promise<void>;
+  generateFirstScene: () => Promise<void>; // Changed to return void
+  generateNextScene: () => Promise<void>;  // Changed to return void
+  markComplete: () => void;
+  processUploadedScript: (file: File) => Promise<void>;
+}
+
+
+// Interface for script state machine returned values
+export interface ScriptStateValues {
+  state: ScriptState;
+  context: ScriptStateContext;
+  actions: ScriptStateActions;
+  
+  // Derived UI state flags
+  showGenerateBeatsButton: boolean;
+  showGenerateScriptButton: boolean;
+  showGenerateNextSceneButton: boolean;
+  canEditBeats: boolean;
+  canEditScript: boolean;
+  isUploadedScript: boolean;
+  canReprocessUpload: boolean;
 }
 
 export const DEFAULT_FORMAT_SETTINGS: FormatSettings = {

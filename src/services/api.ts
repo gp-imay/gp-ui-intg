@@ -1,26 +1,52 @@
 // src/services/api.ts
 import { ApiBeat, GeneratedScenesResponse, Scenes } from '../types/beats';
-import { ScriptElement, ElementType } from '../types/screenplay';
+import { ScriptElement, ElementType, ScriptCreationMethod, ScriptMetadata } from '../types/screenplay';
 import { supabase } from '../lib/supabase';
 
+// const API_BASE_URL = 'http://script-manager-api-dev.azurewebsites.net/api/v1';
 const API_BASE_URL = 'http://localhost:8000/api/v1';
 
 // Updated getToken function to use Supabase session
 const getToken = async () => {
-  // Try to get the token from the current Supabase session
-  const { data: { session } } = await supabase.auth.getSession();
+  try {
+    // Try to get the token from the current Supabase session
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (session?.access_token) {
+      return session.access_token;
+    }
+    
+    // Fallback to localStorage or sessionStorage if no active session
+    const storedToken = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+    
+    // Final fallback to a default token (only for development/testing)
+    const defaultToken = 'eyJhbGciOiJIUzI1NiIsImtpZCI6ImJPb1NwQjZjMEVUNmpVMmMiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL2hhd3Zna2lybG1kZ2JkbXV0dXFoLnN1cGFiYXNlLmNvL2F1dGgvdjEiLCJzdWIiOiI3MGJiZDRlMy1kNWRjLTQzMDMtYTcyYy02YjM0YjNiNGQ0MWYiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzQxODEzOTA5LCJpYXQiOjE3NDE4MTAzMDksImVtYWlsIjoiaW1heWF5b2dpQGdtYWlsLmNvbSIsInBob25lIjoiIiwiYXBwX21ldGFkYXRhIjp7InByb3ZpZGVyIjoiZW1haWwiLCJwcm92aWRlcnMiOlsiZW1haWwiXX0sInVzZXJfbWV0YWRhdGEiOnsiZW1haWwiOiJpbWF5YXlvZ2lAZ21haWwuY29tIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsImZ1bGxfbmFtZSI6IkltYXlhIiwicGhvbmVfdmVyaWZpZWQiOmZhbHNlLCJzdWIiOiI3MGJiZDRlMy1kNWRjLTQzMDMtYTcyYy02YjM0YjNiNGQ0MWYifSwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJwYXNzd29yZCIsInRpbWVzdGFtcCI6MTc0MTgxMDMwOX1dLCJzZXNzaW9uX2lkIjoiYWVhNzAwZTMtYzVlMC00MTYzLWFhMjQtN2YxNTIxNTRhM2Y3IiwiaXNfYW5vbnltb3VzIjpmYWxzZX0.6vmWF-mFahaCYHbVt8dL6WMXGoWAu3XIDoc531KyLnc';
+    
+    return storedToken || defaultToken;
+  } catch (error) {
+    console.error('Error getting token:', error);
+    throw new Error('Authentication token not available. Please sign in again.');
+  }
+};
+
+// Updated error handler to provide user-friendly messages
+const handleApiError = (error: any, defaultMessage: string = 'An error occurred with the API request'): never => {
+  console.error('API Error:', error);
   
-  if (session?.access_token) {
-    return session.access_token;
+  let errorMessage = defaultMessage;
+  
+  if (error.response) {
+    try {
+      const errorData = error.response.data;
+      errorMessage = errorData.detail || errorData.message || `API error: ${error.response.status}`;
+    } catch {
+      errorMessage = `API error: ${error.response.status || 'Unknown status'}`;
+    }
+  } else if (error.message) {
+    errorMessage = error.message;
   }
   
-  // Fallback to localStorage or sessionStorage if no active session
-  const storedToken = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
-  
-  // Final fallback to a default token (only for development/testing)
-  const defaultToken = 'eyJhbGciOiJIUzI1NiIsImtpZCI6ImJPb1NwQjZjMEVUNmpVMmMiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL2hhd3Zna2lybG1kZ2JkbXV0dXFoLnN1cGFiYXNlLmNvL2F1dGgvdjEiLCJzdWIiOiI3MGJiZDRlMy1kNWRjLTQzMDMtYTcyYy02YjM0YjNiNGQ0MWYiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzQxODEzOTA5LCJpYXQiOjE3NDE4MTAzMDksImVtYWlsIjoiaW1heWF5b2dpQGdtYWlsLmNvbSIsInBob25lIjoiIiwiYXBwX21ldGFkYXRhIjp7InByb3ZpZGVyIjoiZW1haWwiLCJwcm92aWRlcnMiOlsiZW1haWwiXX0sInVzZXJfbWV0YWRhdGEiOnsiZW1haWwiOiJpbWF5YXlvZ2lAZ21haWwuY29tIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsImZ1bGxfbmFtZSI6IkltYXlhIiwicGhvbmVfdmVyaWZpZWQiOmZhbHNlLCJzdWIiOiI3MGJiZDRlMy1kNWRjLTQzMDMtYTcyYy02YjM0YjNiNGQ0MWYifSwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJwYXNzd29yZCIsInRpbWVzdGFtcCI6MTc0MTgxMDMwOX1dLCJzZXNzaW9uX2lkIjoiYWVhNzAwZTMtYzVlMC00MTYzLWFhMjQtN2YxNTIxNTRhM2Y3IiwiaXNfYW5vbnltb3VzIjpmYWxzZX0.6vmWF-mFahaCYHbVt8dL6WMXGoWAu3XIDoc531KyLnc';
-  
-  return storedToken || defaultToken;
+  throw new Error(errorMessage);
 };
 
 // Interface for the scene segment generation response
@@ -105,6 +131,44 @@ export interface ActScenesResponse {
   generated_scenes: Scenes[];
 }
 
+// NEW: Interface for creating scripts
+export interface CreateScriptPayload {
+  title: string;
+  subtitle?: string;
+  genre?: string;
+  story?: string;
+  creation_method: ScriptCreationMethod;
+}
+
+// NEW: Interface for script creation response
+export interface CreateScriptResponse {
+  id: string;
+  title: string;
+  subtitle?: string;
+  genre?: string;
+  story?: string;
+  creation_method: ScriptCreationMethod;
+  created_at: string;
+  updated_at: string;
+  user_id: string;
+}
+
+// NEW: Interface for script metadata response
+export interface ScriptMetadataResponse {
+  id: string;
+  title: string;
+  subtitle?: string;
+  genre?: string;
+  story?: string;
+  creation_method: ScriptCreationMethod;
+  created_at: string;
+  updated_at: string;
+  user_id: string;
+  current_scene_segment_id?: string;
+  total_scenes?: number;
+  total_beats?: number;
+}
+
 // Map AI component types to editor element types
 function mapComponentTypeToElementType(componentType: keyof ComponentTypeAI): ElementType {
   const typeMap: Record<keyof ComponentTypeAI, ElementType> = {
@@ -123,8 +187,98 @@ function generateUniqueId(prefix: string = 'comp'): string {
 }
 
 export const api = {
-  // Updated methods to use async getToken
-  async getBeats(scriptId: string = '73638436-9d3d-4bc4-89ef-9d7b9e5141df'): Promise<ApiBeat[]> {
+  // NEW: Create a new script
+  async createScript(payload: Omit<CreateScriptPayload, 'creation_method'>, creationMethod: ScriptCreationMethod = 'FROM_SCRATCH'): Promise<CreateScriptResponse> {
+    try {
+      const token = await getToken();
+      const response = await fetch(
+        `${API_BASE_URL}/scripts/`,
+        {
+          method: 'POST',
+          headers: {
+            'accept': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            ...payload,
+            creation_method: creationMethod
+          })
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to create script: ${errorText || response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      return handleApiError(error, 'Failed to create script');
+    }
+  },
+
+  // NEW: Get script metadata
+  async getScriptMetadata(scriptId: string): Promise<ScriptMetadataResponse> {
+    try {
+      const token = await getToken();
+      const response = await fetch(
+        `${API_BASE_URL}/scripts/${scriptId}`,
+        {
+          headers: {
+            'accept': 'application/json',
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to get script metadata: ${errorText || response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      return handleApiError(error, 'Failed to get script information');
+    }
+  },
+
+  // NEW: Upload a script file
+  async uploadScript(file: File, scriptId?: string): Promise<CreateScriptResponse> {
+    try {
+      const token = await getToken();
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      if (scriptId) {
+        formData.append('script_id', scriptId);
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL}/scripts/upload`,
+        {
+          method: 'POST',
+          headers: {
+            'accept': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: formData
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to upload script: ${errorText || response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      return handleApiError(error, 'Failed to upload script file');
+    }
+  },
+
+  // Updated: Get beats with better error handling
+  async getBeats(scriptId: string ): Promise<ApiBeat[]> {
     try {
       const token = await getToken();
       const response = await fetch(
@@ -140,18 +294,17 @@ export const api = {
       if (!response.ok) {
         const errorText = await response.text();
         throw new Error(
-          `API request failed with status ${response.status}: ${errorText || 'Unknown error'}`
+          `Failed to fetch beats: ${errorText || response.statusText}`
         );
       }
 
-      const data = await response.json();
-      return data;
+      return await response.json();
     } catch (error) {
-      console.error('Failed to fetch beats:', error);
-      throw error;
+      return handleApiError(error, 'Failed to fetch script beats');
     }
   },
 
+  // Updated: Update beat with better error handling
   async updateBeat(beatId: string, payload: UpdateBeatPayload): Promise<ApiBeat> {
     try {
       const token = await getToken();
@@ -170,17 +323,16 @@ export const api = {
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`API request failed with status ${response.status}: ${errorText || 'Unknown error'}`);
+        throw new Error(`Failed to update beat: ${errorText || response.statusText}`);
       }
 
-      const data = await response.json();
-      return data;
+      return await response.json();
     } catch (error) {
-      console.error('Failed to update beat:', error);
-      throw error;
+      return handleApiError(error, 'Failed to update beat information');
     }
   },
 
+  // Updated: Generate scenes with better error handling
   async generateScenes(beatId: string): Promise<GeneratedScenesResponse> {
     try {
       const token = await getToken();
@@ -199,17 +351,16 @@ export const api = {
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`API request failed with status ${response.status}: ${errorText || 'Unknown error'}`);
+        throw new Error(`Failed to generate scenes: ${errorText || response.statusText}`);
       }
 
-      const data = await response.json();
-      return data;
+      return await response.json();
     } catch (error) {
-      console.error('Failed to generate scenes:', error);
-      throw error;
+      return handleApiError(error, 'Failed to generate scenes for this beat');
     }
   },
   
+  // Updated: Update scene description with better error handling
   async updateSceneDescription(sceneId: string, scene_detail_for_ui: string): Promise<Scenes> {
     try {
       const token = await getToken();
@@ -228,16 +379,16 @@ export const api = {
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`API request failed with status ${response.status}: ${errorText || 'Unknown error'}`);
+        throw new Error(`Failed to update scene: ${errorText || response.statusText}`);
       }
 
       return await response.json();
     } catch (error) {
-      console.error('Failed to update scene:', error);
-      throw error;
+      return handleApiError(error, 'Failed to update scene description');
     }
   },
 
+  // Updated: Generate scenes for act with better error handling
   async generateScenesForAct(act: string, scriptId: string = '73638436-9d3d-4bc4-89ef-9d7b9e5141df'): Promise<ActScenesResponse> {
     try {
       const token = await getToken();
@@ -261,18 +412,17 @@ export const api = {
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`API request failed with status ${response.status}: ${errorText || 'Unknown error'}`);
+        throw new Error(`Failed to generate scenes for act: ${errorText || response.statusText}`);
       }
 
-      const data = await response.json();
-      return data;
+      return await response.json();
     } catch (error) {
-      console.error('Failed to generate scenes for act:', error);
-      throw error;
+      return handleApiError(error, 'Failed to generate scenes for this act');
     }
   },
 
-  async generateScript(scriptId: string = '73638436-9d3d-4bc4-89ef-9d7b9e5141df'): Promise<SceneSegmentGenerationResponse> {
+  // Updated: Generate script with better error handling and scriptId parameter
+  async generateScript(scriptId: string): Promise<SceneSegmentGenerationResponse> {
     try {
       const token = await getToken();
       const response = await fetch(
@@ -290,17 +440,49 @@ export const api = {
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`API request failed with status ${response.status}: ${errorText || 'Unknown error'}`);
+        throw new Error(`Failed to generate script: ${errorText || response.statusText}`);
       }
 
       const data: SceneSegmentGenerationResponse = await response.json();
       return data;
     } catch (error) {
-      console.error('Failed to generate script:', error);
-      throw error;
+      return handleApiError(error, 'Failed to generate script');
     }
   },
 
+  // NEW: Generate next scene
+  async generateNextScene(scriptId: string, currentSceneSegmentId: string): Promise<SceneSegmentGenerationResponse> {
+    try {
+      const token = await getToken();
+      const response = await fetch(
+        `${API_BASE_URL}/scene-segments/ai/generate-next`,
+        {
+          method: 'POST',
+          headers: {
+            'accept': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ 
+            script_id: scriptId,
+            previous_scene_segment_id: currentSceneSegmentId
+          })
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to generate next scene: ${errorText || response.statusText}`);
+      }
+
+      const data: SceneSegmentGenerationResponse = await response.json();
+      return data;
+    } catch (error) {
+      return handleApiError(error, 'Failed to generate the next scene');
+    }
+  },
+
+  // Updated: Get script segments with better error handling
   async getScriptSegments(scriptId: string, skip: number = 0, limit: number = 10): Promise<SegmentListResponse> {
     try {
       const token = await getToken();
@@ -317,7 +499,7 @@ export const api = {
       );
 
       if (!response.ok) {
-        let errorMessage = `API request failed with status ${response.status}`;
+        let errorMessage = `Failed to fetch script segments: ${response.status}`;
         
         try {
           // Try to parse error message from response
@@ -375,8 +557,7 @@ export const api = {
       
       return data;
     } catch (error) {
-      console.error('Failed to fetch script segments:', error);
-      throw error;
+      return handleApiError(error, 'Failed to fetch script segments');
     }
   },
 
@@ -482,7 +663,14 @@ export const api = {
       
       try {
         const segmentElements = this.convertSceneComponentsToElements(segment.components);
-        allElements.push(...segmentElements);
+        
+        // Add scene segment ID to each element for tracking
+        const elementsWithSegmentId = segmentElements.map(element => ({
+          ...element,
+          sceneSegmentId: segment.id
+        }));
+        
+        allElements.push(...elementsWithSegmentId);
       } catch (error) {
         console.error('Error converting segment components to elements:', error, segment);
         // Continue with other segments
@@ -494,5 +682,52 @@ export const api = {
     }
     
     return allElements;
+  },
+
+  // NEW: Get current script state
+  async getScriptState(scriptId: string): Promise<{
+    creationMethod: ScriptCreationMethod;
+    hasBeats: boolean;
+    scenesCount: number;
+    currentSceneSegmentId?: string;
+  }> {
+    try {
+      // Get script metadata
+      const metadata = await this.getScriptMetadata(scriptId);
+      
+      // Get beats
+      let hasBeats = false;
+      try {
+        const beats = await this.getBeats(scriptId);
+        hasBeats = beats && beats.length > 0;
+      } catch (error) {
+        console.warn('Error fetching beats, assuming no beats:', error);
+      }
+      
+      // Get scene segments
+      let scenesCount = 0;
+      let currentSceneSegmentId = metadata.current_scene_segment_id;
+      
+      try {
+        const segments = await this.getScriptSegments(scriptId);
+        scenesCount = segments.total || 0;
+        
+        // If metadata doesn't have a current segment ID but we have segments, use the last one
+        if (!currentSceneSegmentId && segments.segments.length > 0) {
+          currentSceneSegmentId = segments.segments[segments.segments.length - 1].id;
+        }
+      } catch (error) {
+        console.warn('Error fetching scene segments:', error);
+      }
+      
+      return {
+        creationMethod: metadata.creation_method,
+        hasBeats,
+        scenesCount,
+        currentSceneSegmentId
+      };
+    } catch (error) {
+      return handleApiError(error, 'Failed to determine script state');
+    }
   }
 };

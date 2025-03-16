@@ -1,6 +1,5 @@
-// Always enable the generate script button
-const allBeatsHaveScenes = true;// src/components/BeatSheet/BeatSheetView.tsx
 import React, { useEffect, useRef, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { RefreshCcw, AlertCircle, FileText } from 'lucide-react';
 import { BeatCard } from './BeatCard';
 import { ScenePanel } from './ScenePanel';
@@ -9,9 +8,11 @@ import { useStoryStore } from '../../store/storyStore';
 import { Beat, GeneratedScenesResponse } from '../../types/beats';
 import { api } from '../../services/api';
 import { useAlert } from '../Alert';
-import { ScriptElement, ElementType } from '../../types/screenplay';
+import { ScriptElement } from '../../types/screenplay';
 
 const ACTS = ['Act 1', 'Act 2A', 'Act 2B', 'Act 3'] as const;
+
+type ScriptState = 'empty' | 'beatsLoaded' | 'firstSceneGenerated' | 'scriptGenerated';
 
 interface BeatSheetViewProps {
   title?: string;
@@ -26,14 +27,20 @@ export function BeatSheetView({
   onGeneratedScriptElements,
   currentSceneSegmentId
 }: BeatSheetViewProps) {
+  const { scriptId } = useParams<{ scriptId: string }>();
   const canvasRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const [selectedBeat, setSelectedBeat] = useState<Beat | null>(null);
-  const [showTooltip, setShowTooltip] = useState(false);
   const [headerHeight, setHeaderHeight] = useState(0);
   const [isGeneratingScript, setIsGeneratingScript] = useState(false);
   const [sceneSegmentIdState, setSceneSegmentIdState] = useState<string | null>(null);
+  const [scriptState, setScriptState] = useState<ScriptState>('empty');
   const { showAlert } = useAlert();
+  
+  // Ref to track if beats have been fetched to prevent duplicate API calls
+  const beatsLoadedRef = useRef(false);
+  // Ref to track if script generation is in progress
+  const scriptGenerationInProgressRef = useRef(false);
   
   const { 
     premise, 
@@ -48,25 +55,51 @@ export function BeatSheetView({
     actGenerationErrors
   } = useStoryStore();
 
+  // Debug logging for component lifecycle
   useEffect(() => {
-    // Initialize sceneSegmentIdState from props
+    console.log("BeatSheetView mounted");
+    return () => {
+      console.log("BeatSheetView unmounted");
+      // Reset fetching refs on unmount
+      beatsLoadedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (currentSceneSegmentId) {
       setSceneSegmentIdState(currentSceneSegmentId);
+      setScriptState('firstSceneGenerated');
+      console.log("currentSceneSegmentId updated:", currentSceneSegmentId);
     }
   }, [currentSceneSegmentId]);
 
+  // Initial setup - only run once
   useEffect(() => {
-    console.log('Current beats:', beats);
+    // Only set premise if not already set
     if (!premise) {
+      console.log("Setting premise to:", title);
       useStoryStore.getState().setPremise(title || "Untitled Screenplay");
     }
-    if (beats.length === 0) {
-      console.log('Fetching beats...');
-      fetchBeats();
+    
+    // Only fetch beats if not already loaded and not currently fetching
+    if (beats.length === 0 && !beatsLoadedRef.current && scriptId) {
+      console.log("Fetching beats...");
+      beatsLoadedRef.current = true; // Mark as fetching to prevent duplicate calls
+      
+      fetchBeats().then(() => {
+        console.log("Beats fetched successfully");
+        setScriptState('beatsLoaded');
+      }).catch(error => {
+        console.error("Error fetching beats:", error);
+        beatsLoadedRef.current = false; // Reset flag on error to allow retry
+        showAlert('error', 'Failed to load beats. Please try again.');
+      });
+    } else if (beats.length > 0 && scriptState === 'empty') {
+      console.log("Beats already loaded, updating state");
+      setScriptState('beatsLoaded');
     }
-  }, [premise, beats.length, fetchBeats, title]);
+  }, [premise, fetchBeats, title, scriptState, showAlert, beats.length, scriptId]);
 
-  // Measure header height dynamically
   useEffect(() => {
     if (headerRef.current) {
       setHeaderHeight(headerRef.current.getBoundingClientRect().height);
@@ -74,21 +107,32 @@ export function BeatSheetView({
   }, []);
 
   const handleGenerateScript = async () => {
+    if (!scriptId) {
+      showAlert('error', 'Script ID is missing.');
+      return;
+    }
+    
+    // Prevent multiple simultaneous script generation requests
+    if (scriptGenerationInProgressRef.current) {
+      console.log("Script generation already in progress, ignoring request");
+      return;
+    }
+    
+    scriptGenerationInProgressRef.current = true;
     setIsGeneratingScript(true);
+    
     try {
-      console.log('Generating script...');
-      const response = await api.generateScript();
+      console.log("Generating script for ID:", scriptId);
+      const response = await api.generateScript(scriptId);
       
       if (!response.success) {
         throw new Error(response.error || 'Failed to generate script');
       }
       
-      // Check if this scene segment is already in the script
+      console.log("Script generation response:", response);
+      
       if (response.scene_segment_id && response.scene_segment_id === sceneSegmentIdState) {
-        // Scene already exists in the script, prompt to generate next scene instead
         showAlert('info', 'This scene is already in your script. You can generate the next scene once this one is complete.');
-        
-        // Switch to script view to show the existing scene
         if (onSwitchToScript) {
           onSwitchToScript();
         }
@@ -96,34 +140,28 @@ export function BeatSheetView({
       }
       
       if (response.generated_segment?.components) {
-        // Convert the API response components to ScriptElement format
         const scriptElements = api.convertSceneComponentsToElements(
           response.generated_segment.components
         );
         
-        // Save the current scene segment ID
-        if (response.scene_segment_id) {
+        console.log("Converted script elements:", scriptElements.length);
+        
+        if (!sceneSegmentIdState && response.scene_segment_id) {
           setSceneSegmentIdState(response.scene_segment_id);
+          setScriptState('firstSceneGenerated');
+        } else if (response.scene_segment_id) {
+          setSceneSegmentIdState(response.scene_segment_id);
+          setScriptState('scriptGenerated');
         }
         
-        // Pass the generated elements and scene ID to the parent component
         if (onGeneratedScriptElements && response.scene_segment_id) {
-          // Make sure we're always passing both parameters
-          onGeneratedScriptElements(
-            scriptElements,
-            response.scene_segment_id
-          );
+          onGeneratedScriptElements(scriptElements, response.scene_segment_id);
         } else if (onGeneratedScriptElements) {
-          // If for some reason scene_segment_id is missing, use a fallback ID
           const fallbackId = `generated-${Date.now()}`;
           console.warn('Missing scene_segment_id in response, using fallback:', fallbackId);
-          onGeneratedScriptElements(
-            scriptElements,
-            fallbackId
-          );
+          onGeneratedScriptElements(scriptElements, fallbackId);
         }
         
-        // Switch to script view
         if (onSwitchToScript) {
           onSwitchToScript();
         }
@@ -137,26 +175,27 @@ export function BeatSheetView({
       showAlert('error', error instanceof Error ? error.message : 'Failed to generate script');
     } finally {
       setIsGeneratingScript(false);
+      scriptGenerationInProgressRef.current = false;
     }
   };
-  
 
   const handleGenerateScenes = async (beatId: string): Promise<GeneratedScenesResponse> => {
     try {
+      console.log("Generating scenes for beat:", beatId);
       return await generateScenes(beatId);
     } catch (error) {
+      console.error("Error generating scenes:", error);
       throw error;
     }
   };
 
   const handleShowScenes = (beat: Beat) => {
-    console.log('handleShowScenes called with beat:', beat);
-    console.log('Current selectedBeat:', selectedBeat);
+    console.log("Toggle scenes for beat:", beat.id);
     setSelectedBeat(selectedBeat?.id === beat.id ? null : beat);
-    console.log('Updated selectedBeat:', selectedBeat?.id === beat.id ? null : beat);
   };
 
   const handleGenerateScenesForAct = (act: Beat['act']) => {
+    console.log("Generating scenes for act:", act);
     generateScenesForAct(act);
   };
 
@@ -164,8 +203,13 @@ export function BeatSheetView({
     act,
     beats: beats.filter(beat => beat.act === act)
   }));
-
-  console.log('beatsByAct:', beatsByAct);
+  
+  console.log("Rendering BeatSheetView with state:", {
+    beatsCount: beats.length,
+    scriptState,
+    isGeneratingScript,
+    selectedBeat: selectedBeat?.id,
+  });
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -184,22 +228,21 @@ export function BeatSheetView({
             {isGeneratingScript ? (
               <>
                 <RefreshCcw className="w-4 h-4 mr-2 animate-spin" />
-                Generating Script...
+                Generating...
               </>
             ) : (
               <>
                 <FileText className="w-4 h-4 mr-2" />
-                Generate Script
+                {scriptState === 'firstSceneGenerated' || scriptState === 'scriptGenerated'
+                  ? 'Generate Next Scene'
+                  : 'Generate Script'}
               </>
             )}
           </button>
-          
-          {/* Removed tooltip since button is always enabled */}
         </div>
       </div>
 
       <div className="flex-1 overflow-hidden relative">
-        {/* Main content with acts sidebar and beats canvas */}
         <div className="h-full flex">
           {/* Acts sidebar */}
           <div className="w-[200px] flex-shrink-0 border-r bg-gray-50 overflow-y-auto">
@@ -242,9 +285,7 @@ export function BeatSheetView({
           {/* Beats canvas */}
           <div
             ref={canvasRef}
-            className={`flex-1 overflow-y-auto transition-all duration-300 ${
-              selectedBeat ? 'pr-96' : ''
-            }`}
+            className={`flex-1 overflow-y-auto transition-all duration-300 ${selectedBeat ? 'pr-96' : ''}`}
           >
             {beatsByAct.map(({ act, beats: actBeats }) => (
               <div 
@@ -266,9 +307,7 @@ export function BeatSheetView({
                         onPositionChange={updateBeatPosition}
                         onValidate={validateBeat}
                         onGenerateScenes={handleGenerateScenes}
-                        onShowScenes={(event) => {
-                          handleShowScenes(beat);
-                        }}
+                        onShowScenes={() => handleShowScenes(beat)}
                         isSelected={selectedBeat?.id === beat.id}
                       />
                     ))}

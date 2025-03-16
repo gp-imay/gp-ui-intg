@@ -5,6 +5,7 @@ import { useClickOutside } from '../hooks/useClickOutside';
 import Avatar from '../components/Dashboard/Avatar';
 import ComingSoon from '../components/Dashboard/ComingSoon';
 import NewScriptModal from '../components/Dashboard/NewScriptModal';
+import { useAlert } from '../components/Alert';
 import {
   LogOut,
   Search,
@@ -29,6 +30,7 @@ export function Dashboard() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const { showAlert } = useAlert();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNewScriptModal, setShowNewScriptModal] = useState(false);
   const [scripts, setScripts] = useState<Script[]>([]);
@@ -59,6 +61,7 @@ export function Dashboard() {
       setScripts(data);
     } catch (error) {
       console.error('Failed to fetch scripts:', error);
+      showAlert('error', error instanceof Error ? error.message : 'Failed to fetch scripts');
     } finally {
       setLoading(false);
     }
@@ -71,8 +74,13 @@ export function Dashboard() {
   }, [activeSection]);
 
   const handleSignOut = async () => {
-    await signOut();
-    navigate('/login');
+    try {
+      await signOut();
+      navigate('/login');
+    } catch (error) {
+      console.error('Failed to sign out:', error);
+      showAlert('error', 'Failed to sign out. Please try again.');
+    }
   };
 
   const handleSectionChange = (section: Section) => {
@@ -84,9 +92,18 @@ export function Dashboard() {
     fetchScripts();
   };
 
-  // Added function to handle script click and navigate to editor
-  const handleScriptClick = (scriptId: string) => {
-    navigate(`/editor/${scriptId}`);
+  // Handle script click and navigate to editor with appropriate view
+  const handleScriptClick = (script: Script) => {
+    try {
+      // Determine the initial view based on script creation method
+      const initialView = script.creation_method === 'WITH_AI' ? 'beats' : 'script';
+      
+      // Navigate to the script editor with the appropriate view mode
+      navigate(`/editor/${script.id}?view=${initialView}`);
+    } catch (error) {
+      console.error('Error navigating to script:', error);
+      showAlert('error', 'Failed to open script. Please try again.');
+    }
   };
 
   const renderContent = () => {
@@ -98,7 +115,7 @@ export function Dashboard() {
       <div className="max-w-7xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <h2 className="text-2xl font-bold text-gray-900">
-            Start Writing Your First Script With GP
+            Your Screenplays
           </h2>
           <button
             onClick={() => setShowNewScriptModal(true)}
@@ -116,7 +133,14 @@ export function Dashboard() {
           
           {loading ? (
             <div className="px-6 py-8 text-center text-gray-500">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
               Loading scripts...
+            </div>
+          ) : scripts.length === 0 ? (
+            <div className="px-6 py-8 text-center text-gray-500">
+              <FileText className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+              <p className="text-lg font-medium mb-2">No scripts yet</p>
+              <p className="text-sm">Create your first script by clicking the "Create New Project" button.</p>
             </div>
           ) : (
             <table className="min-w-full divide-y divide-gray-200">
@@ -129,16 +153,22 @@ export function Dashboard() {
                     Genre
                   </th>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Type
+                  </th>
+                  {/* <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Progress
                   </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Last Updated
+                  </th> */}
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {scripts.map((script) => (
                   <tr 
                     key={script.id} 
-                    className="hover:bg-gray-50 cursor-pointer"
-                    onClick={() => handleScriptClick(script.id)}
+                    className="hover:bg-gray-50 cursor-pointer transition-colors duration-150"
+                    onClick={() => handleScriptClick(script)}
                   >
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
@@ -154,9 +184,24 @@ export function Dashboard() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm text-gray-600">{script.genre}</span>
+                      <span className="text-sm text-gray-600">{script.genre || 'Not specified'}</span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                        script.creation_method === 'WITH_AI' 
+                          ? 'bg-blue-100 text-blue-800' 
+                          : script.creation_method === 'UPLOAD'
+                          ? 'bg-purple-100 text-purple-800'
+                          : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {script.creation_method === 'WITH_AI' 
+                          ? 'AI Assisted' 
+                          : script.creation_method === 'UPLOAD'
+                          ? 'Uploaded'
+                          : 'Manual'}
+                      </span>
+                    </td>
+                    {/* <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-3">
                         <div className="flex-1 bg-gray-200 rounded-full h-2 w-32">
                           <div
@@ -167,17 +212,22 @@ export function Dashboard() {
                         <span className="text-sm text-gray-600">{script.progress}%</span>
                       </div>
                     </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {new Date(script.updated_at).toLocaleDateString()}
+                    </td> */}
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
           
-          <div className="px-6 py-4 border-t border-gray-200">
-            <a href="#" className="text-blue-600 hover:text-blue-700 font-medium">
-              View All Projects
-            </a>
-          </div>
+          {scripts.length > 0 && (
+            <div className="px-6 py-4 border-t border-gray-200">
+              <button className="text-blue-600 hover:text-blue-700 font-medium">
+                View All Projects
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -305,31 +355,31 @@ export function Dashboard() {
                 </button>
 
                 {showProfileMenu && (
-                  <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200">
+                  <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
                     <div className="p-4 border-b border-gray-200">
                       <p className="font-semibold text-gray-900">{user?.user_metadata?.full_name || user?.email}</p>
                       <p className="text-sm text-gray-600">{user?.email}</p>
                     </div>
                     <div className="py-2">
-                      <a href="#" className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                      <button className="flex w-full items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                         <User className="h-4 w-4" />
                         Edit Profile
-                      </a>
-                      <a href="#" className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                      </button>
+                      <button className="flex w-full items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                         <Clock className="h-4 w-4" />
                         Activity Log
-                      </a>
-                      <a href="#" className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                      </button>
+                      <button className="flex w-full items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                         <Star className="h-4 w-4" />
                         Go Pro
-                      </a>
-                      <a href="#" className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                      </button>
+                      <button className="flex w-full items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                         <Settings className="h-4 w-4" />
                         Account Settings
-                      </a>
+                      </button>
                       <button
                         onClick={handleSignOut}
-                        className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 w-full"
+                        className="flex w-full items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
                       >
                         <LogOut className="h-4 w-4" />
                         Sign out

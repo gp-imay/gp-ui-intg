@@ -4,14 +4,15 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LoginPage } from './pages/LoginPage';
 import { SignUpPage } from './pages/SignUpPage';
 import { Dashboard } from './pages/Dashboard';
-import { ScriptEditorPage } from './pages/ScriptEditorPage';
+import ScriptEditorPageWithAlerts from './pages/ScriptEditorPage';
+// import { HomePage } from './pages/HomePage';
 import { AlertProvider } from './components/Alert';
 
 // Private route component to protect routes that require authentication
-const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
+function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { session } = useAuth();
   return session ? <>{children}</> : <Navigate to="/login" />;
-};
+}
 
 function App() {
   return (
@@ -32,11 +33,13 @@ function App() {
                 </PrivateRoute>
               } 
             />
+
+            {/* Script editor route */}
             <Route 
               path="/editor/:scriptId" 
               element={
                 <PrivateRoute>
-                  <ScriptEditorPage />
+                  <ScriptEditorPageWithAlerts />
                 </PrivateRoute>
               } 
             />

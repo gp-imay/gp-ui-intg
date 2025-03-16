@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Upload, Wand2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { X, Upload, Wand2, RefreshCw } from 'lucide-react';
 import { useClickOutside } from '../../hooks/useClickOutside';
 import { mockApi } from '../../services/mockApi';
+import { useAlert } from '../../components/Alert';
 
 interface NewScriptModalProps {
   isOpen: boolean;
@@ -16,13 +18,16 @@ export default function NewScriptModal({ isOpen, onClose, onScriptCreated }: New
   const [story, setStory] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState('');
   const [useAI, setUseAI] = useState(false);
+  const [isGeneratingBeats, setIsGeneratingBeats] = useState(false);
+  const [newScriptId, setNewScriptId] = useState<string | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const createButtonRef = useRef<HTMLButtonElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { showAlert } = useAlert();
+  const navigate = useNavigate();
 
   useClickOutside(modalRef, onClose);
 
@@ -52,10 +57,11 @@ export default function NewScriptModal({ isOpen, onClose, onScriptCreated }: New
       setSubtitle('');
       setGenre('');
       setStory('');
-      setError('');
       setSelectedFile(null);
       setFileError('');
       setUseAI(false);
+      setIsGeneratingBeats(false);
+      setNewScriptId(null);
     }
   }, [isOpen]);
 
@@ -63,26 +69,77 @@ export default function NewScriptModal({ isOpen, onClose, onScriptCreated }: New
     e.preventDefault();
     
     if (!title.trim()) {
-      setError('Title is required');
+      showAlert('error', 'Title is required');
       return;
     }
-
+  
     try {
       setIsSubmitting(true);
-      setError('');
       
-      await mockApi.createScript({
+      const scriptData = {
         title: title.trim(),
         subtitle: subtitle.trim(),
         genre: genre.trim(),
         story: story.trim()
-      });
-
+      };
+      
+      let createdScript;
+      
+      if (useAI) {
+        // Call createAIScript for AI-assisted scripts
+        console.log(`Creating script with AI assistance`);
+        const result = await mockApi.createAIScript(scriptData);
+        createdScript = result.script;
+        
+        // Store the beats in your app state if needed
+        // For example, if you're using storyStore:
+        // result.beats.forEach(beat => storyStore.addBeat(beat));
+        
+        console.log("Script created with beats:", result.beats);
+      } else {
+        // Call createScript for regular scripts
+        console.log(`Creating script manually`);
+        createdScript = await mockApi.createScript(scriptData);
+      }
+  
+      console.log("Script created successfully:", createdScript);
+      
+      // Save the new script ID - make sure it's properly set
+      if (!createdScript.id) {
+        throw new Error('Created script is missing an ID');
+      }
+      
+      setNewScriptId(createdScript.id);
+      
+      // Show success message
+      showAlert('success', 'Script created successfully!');
+      
+      // Call the onScriptCreated callback
       onScriptCreated?.();
-      onClose();
+      
+      // Handle UI logic based on script type
+      if (useAI) {
+        // AI script flow
+        setIsGeneratingBeats(true);
+        
+        // Simulate beat generation (in real implementation, this would happen on the server)
+        setTimeout(() => {
+          setIsGeneratingBeats(false);
+          
+          // Navigate to the script editor with the new script ID
+          onClose();
+          
+          // Navigate to beats view for AI scripts
+          navigate(`/editor/${createdScript.id}?view=beats`);
+        }, 3000);
+      } else {
+        // Regular script flow
+        onClose();
+        navigate(`/editor/${createdScript.id}`);
+      }
     } catch (err: any) {
-      setError(err.message || 'Failed to create script');
-    } finally {
+      console.error("Error creating script:", err);
+      showAlert('error', err.message || 'Failed to create script');
       setIsSubmitting(false);
     }
   };
@@ -122,6 +179,54 @@ export default function NewScriptModal({ isOpen, onClose, onScriptCreated }: New
   const handleBrowseClick = () => {
     fileInputRef.current?.click();
   };
+
+  // Render a loading state if we're generating beats
+  if (isOpen && isGeneratingBeats && newScriptId) {
+    return (
+      <div
+        className="fixed inset-0 z-50 overflow-y-auto"
+        aria-labelledby="modal-title"
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className="flex min-h-screen items-center justify-center p-4">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+            aria-hidden="true"
+          />
+
+          {/* Loading Modal */}
+          <div
+            ref={modalRef}
+            className="relative w-full max-w-md transform overflow-hidden rounded-xl bg-white shadow-2xl transition-all"
+          >
+            <div className="p-8 text-center">
+              <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-blue-50">
+                <RefreshCw className="h-8 w-8 text-blue-600 animate-spin" />
+              </div>
+              
+              <h2 className="mb-2 text-xl font-semibold text-gray-900">
+                Generating Story Beats
+              </h2>
+              
+              <p className="mb-6 text-gray-600">
+                The AI is creating story beats for your script. This might take a moment...
+              </p>
+              
+              <div className="mb-6 h-2 w-full overflow-hidden rounded-full bg-gray-200">
+                <div className="h-full animate-pulse rounded-full bg-blue-600 w-2/3"></div>
+              </div>
+              
+              <p className="text-sm text-gray-500">
+                You'll be redirected to the script editor when it's ready
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!isOpen) return null;
 
@@ -165,12 +270,6 @@ export default function NewScriptModal({ isOpen, onClose, onScriptCreated }: New
 
           <form onSubmit={handleSubmit} className="px-8 pb-8">
             <div className="space-y-6">
-              {error && (
-                <div className="rounded-lg bg-red-50 p-4 text-sm text-red-600">
-                  {error}
-                </div>
-              )}
-
               <div>
                 <label
                   htmlFor="title"
@@ -267,9 +366,16 @@ export default function NewScriptModal({ isOpen, onClose, onScriptCreated }: New
                 ref={createButtonRef}
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full rounded-[8px] bg-[#4B84F3] px-6 py-3 text-center text-sm font-medium text-white transition-colors hover:bg-[#3b6cd2] focus:outline-none disabled:opacity-50"
+                className="w-full rounded-[8px] bg-[#4B84F3] px-6 py-3 text-center text-sm font-medium text-white transition-colors hover:bg-[#3b6cd2] focus:outline-none disabled:opacity-50 flex items-center justify-center"
               >
-                {isSubmitting ? 'Creating...' : 'Create New Script'}
+                {isSubmitting ? (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  'Create New Script'
+                )}
               </button>
 
               <div className="relative mt-8 text-center">
