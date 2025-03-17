@@ -91,8 +91,7 @@ export function Dashboard() {
   const handleScriptCreated = () => {
     fetchScripts();
   };
-
-  // Handle script click and navigate to editor with appropriate view
+  
   const handleScriptClick = (script: Script) => {
     try {
       // Determine the initial view based on script creation method

@@ -27,7 +27,9 @@ export interface Scene {
   export interface StoryState {
     title: string;
     premise: string;
+    scriptId: string | null; 
     setPremise: (premise: string) => void;
+    setScriptId: (id: string) => void; 
     beats: Beat[];
     fetchBeats: () => Promise<void>;
     addBeat: (beat: Beat) => void;

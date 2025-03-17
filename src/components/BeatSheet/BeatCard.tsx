@@ -45,7 +45,7 @@ export const BeatCard: React.FC<BeatCardProps> = ({
 
   const handleSave = async () => {
     if (!isDescriptionModified) return;
-    
+
     try {
       setSaving(true);
       setError(null);
@@ -86,19 +86,23 @@ export const BeatCard: React.FC<BeatCardProps> = ({
   return (
     <Draggable
       nodeRef={nodeRef}
-      position={beat.position}
+      position={
+        beat.position && !isNaN(beat.position.x) && !isNaN(beat.position.y)
+          ? beat.position
+          : { x: 0, y: 0 } // Fallback position
+      }
       onStop={handleDragStop}
       handle=".drag-handle"
       bounds="parent"
       axis="x"
     >
+
       <div
         ref={nodeRef}
         id={`beat-${beat.id}`}
         style={{ position: 'absolute', width: '300px', height: error || generationError ? '200px' : '180px' }}
-        className={`rounded-lg shadow-lg transition-all flex flex-col ${
-          isSelected ? 'ring-2 ring-blue-500' : ''
-        } ${beat.isValidated ? 'bg-green-50' : 'bg-white'}`}
+        className={`rounded-lg shadow-lg transition-all flex flex-col ${isSelected ? 'ring-2 ring-blue-500' : ''
+          } ${beat.isValidated ? 'bg-green-50' : 'bg-white'}`}
       >
         <div className="drag-handle cursor-move p-4 border-b flex items-center justify-between bg-gray-50 rounded-t-lg flex-shrink-0">
           <h3 className="font-semibold text-gray-900 truncate pr-2">{beat.title}</h3>
@@ -106,18 +110,17 @@ export const BeatCard: React.FC<BeatCardProps> = ({
             {editMode ? (
               <button
                 onClick={handleSave}
-                className={`p-1 rounded ${
-                  isDescriptionModified && !isSaving
+                className={`p-1 rounded ${isDescriptionModified && !isSaving
                     ? 'text-green-600 hover:bg-green-100'
                     : 'text-gray-400'
-                } ${isSaving ? 'cursor-not-allowed' : ''}`}
+                  } ${isSaving ? 'cursor-not-allowed' : ''}`}
                 disabled={!isDescriptionModified || isSaving}
                 title={
-                  isSaving 
-                    ? 'Saving...' 
-                    : isDescriptionModified 
-                    ? 'Save changes' 
-                    : 'No changes to save'
+                  isSaving
+                    ? 'Saving...'
+                    : isDescriptionModified
+                      ? 'Save changes'
+                      : 'No changes to save'
                 }
               >
                 {isSaving ? (
@@ -150,10 +153,9 @@ export const BeatCard: React.FC<BeatCardProps> = ({
             <textarea
               value={localBeat.description}
               onChange={(e) => handleInputChange('description', e.target.value)}
-              className={`w-full p-2 border rounded resize-none flex-1 ${
-                error ? 'border-red-300 focus:ring-red-500 focus:border-red-500' 
-                      : 'focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
-              }`}
+              className={`w-full p-2 border rounded resize-none flex-1 ${error ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
+                  : 'focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
+                }`}
               placeholder="Description"
               rows={3}
               disabled={isSaving}
@@ -179,9 +181,8 @@ export const BeatCard: React.FC<BeatCardProps> = ({
                   <button
                     onClick={handleGenerateScenes}
                     disabled={isGenerating}
-                    className={`w-full py-1 px-2 text-sm text-blue-600 hover:bg-blue-50 rounded-md border border-blue-200 flex items-center justify-center gap-1 ${
-                      isGenerating ? 'opacity-50 cursor-not-allowed' : ''
-                    }`}
+                    className={`w-full py-1 px-2 text-sm text-blue-600 hover:bg-blue-50 rounded-md border border-blue-200 flex items-center justify-center gap-1 ${isGenerating ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
                   >
                     {isGenerating ? (
                       <>

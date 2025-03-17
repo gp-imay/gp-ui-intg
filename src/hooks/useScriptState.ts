@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../services/api';
-import { ScriptState, ScriptCreationMethod, ScriptStateValues } from '../types/screenplay';
+import { ScriptState, ScriptCreationMethod, ScriptStateValues, ScriptStateContext, ScriptStateActions } from '../types/screenplay';
 import { useAlert } from '../components/Alert';
 
 interface UseScriptStateProps {
@@ -49,61 +49,48 @@ export function useScriptState({ scriptId, onStateChange }: UseScriptStateProps)
    scriptIdRef.current = scriptId;
 
    const initState = async () => {
-     setIsLoading(true);
-     setIsError(false);
-
-     try {
-       // Determine initialization data
-       let creationMethod: ScriptCreationMethod = 'FROM_SCRATCH';
-       let hasBeats = false;
-       let scenesCount = 0;
-       let currentSceneId = null;
-       
-       // For simplicity, use mockApi pattern or simulated state detection
-       if (scriptId.includes('ai')) {
-         creationMethod = 'WITH_AI';
-         hasBeats = true;
-         // Assume some scenes might be generated based on ID
-         scenesCount = scriptId.includes('scene') ? 1 : 0;
-       } else if (scriptId.includes('upload')) {
-         creationMethod = 'UPLOAD';
-         scenesCount = 1; // Uploaded scripts typically have content
-       }
-
-       // Update context with determined state
-       setContext({
-         scriptId,
-         creationMethod,
-         hasBeats,
-         scenesCount,
-         isComplete: false,
-         currentSceneSegmentId: currentSceneId,
-         uploadInfo: undefined
-       });
-
-       // Determine initial state based on script data
-       let initialState: ScriptState = 'empty';
-
-       if (creationMethod === 'UPLOAD') {
-         initialState = 'uploaded';
-       } else if (scenesCount > 1) {
-         initialState = 'multipleScenes';
-       } else if (scenesCount === 1) {
-         initialState = 'firstSceneGenerated';
-       } else if (hasBeats) {
-         initialState = 'beatsLoaded';
-       }
-
-       updateState(initialState);
-       initializationRef.current = true;
-     } catch (error) {
-       console.error('Failed to initialize script state:', error);
-       setIsError(true);
-       showAlert('error', error instanceof Error ? error.message : 'Failed to load script state');
-     } finally {
-       setIsLoading(false);
-     }
-   };
+    setIsLoading(true);
+    setIsError(false);
+  
+    try {
+      // Get actual script state from API instead of using pattern matching
+      const scriptData = await api.getScriptState(scriptId);
+      
+      // Update context with actual API data
+      setContext({
+        scriptId,
+        creationMethod: scriptData.creationMethod,
+        hasBeats: scriptData.hasBeats,
+        scenesCount: scriptData.scenesCount,
+        isComplete: false,
+        currentSceneSegmentId: scriptData.currentSceneSegmentId,
+        uploadInfo: undefined
+      });
+  
+      // Determine initial state based on script data
+      let initialState: ScriptState = 'empty';
+  
+      if (scriptData.creationMethod === 'UPLOAD') {
+        initialState = 'uploaded';
+      } else if (scriptData.scenesCount > 1) {
+        initialState = 'multipleScenes';
+      } else if (scriptData.scenesCount === 1) {
+        initialState = 'firstSceneGenerated';
+      } else if (scriptData.hasBeats) {
+        initialState = 'beatsLoaded';
+      }
+  
+      updateState(initialState);
+      initializationRef.current = true;
+      
+    } catch (error) {
+      console.error('Failed to initialize script state:', error);
+      setIsError(true);
+      showAlert('error', error instanceof Error ? error.message : 'Failed to load script state');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
    initState();
  }, [scriptId, showAlert, updateState]);

@@ -12,19 +12,19 @@ import { AlertProvider, useAlert } from '../Alert';
 import { GenerateNextSceneButton } from '../GenerateNextSceneButton';
 import { api } from '../../services/api';
 
-import { 
-  ViewMode, 
-  SidebarTab, 
-  TitlePage, 
-  ElementType, 
-  ScriptElement as ScriptElementType, 
-  getNextElementType, 
-  Comment, 
-  FormatSettings, 
-  DEFAULT_FORMAT_SETTINGS, 
-  SceneSuggestions, 
-  DEFAULT_SUGGESTIONS, 
-  UserProfile, 
+import {
+  ViewMode,
+  SidebarTab,
+  TitlePage,
+  ElementType,
+  ScriptElement as ScriptElementType,
+  getNextElementType,
+  Comment,
+  FormatSettings,
+  DEFAULT_FORMAT_SETTINGS,
+  SceneSuggestions,
+  DEFAULT_SUGGESTIONS,
+  UserProfile,
   DEFAULT_USER_PROFILES,
   ScriptStateValues
 } from '../../types/screenplay';
@@ -86,9 +86,18 @@ export function ScriptEditor({ scriptId, initialViewMode = 'script', scriptState
   const [suggestionsEnabled, setSuggestionsEnabled] = useState<boolean>(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const elementRefs = useRef<{ [key: string]: React.RefObject<any> }>({});
+  // const [beatsDisabled, setBeatsDisabled] = useState(false);
+  const [beatsAvailable, setBeatsAvailable] = useState(true);
+
+
 
   // Handle view mode changes
   const handleViewModeChange = (mode: ViewMode) => {
+    if (mode === 'beats' && !beatsAvailable) {
+      // Show informative alert but still allow the tab switch
+      showAlert('info', 'AI beats are not available for manually created scripts. You can still switch to the beats view to see this message.');
+    }
+    
     if (mode === 'beats' && viewMode !== 'beats') {
       // Store current sidebar states before switching to beats mode
       setPreviousSidebarStates({
@@ -106,6 +115,17 @@ export function ScriptEditor({ scriptId, initialViewMode = 'script', scriptState
     setViewMode(mode);
   };
 
+  useEffect(() => {
+    // Set beats availability based on creation method
+    if (scriptState.context.creationMethod === 'WITH_AI') {
+      setBeatsAvailable(true);
+    } else {
+      setBeatsAvailable(false);
+    }
+  }, [scriptState.context.creationMethod]);
+  
+
+
   // Fetch script segments when the component mounts
   useEffect(() => {
     // Skip if we've already attempted to load or scriptId is missing or already loaded this specific script
@@ -113,7 +133,7 @@ export function ScriptEditor({ scriptId, initialViewMode = 'script', scriptState
       setIsLoadingScript(false);
       return;
     }
-    
+
     // Remember this script ID to prevent duplicate loads
     loadedScriptIdRef.current = scriptId;
 
@@ -121,19 +141,19 @@ export function ScriptEditor({ scriptId, initialViewMode = 'script', scriptState
       try {
         setIsLoadingScript(true);
         setLoadError(null);
-        
+
         // Get script metadata first to set title and other properties
         const metadata = await api.getScriptMetadata(scriptId);
         setTitle(metadata.title || `Script ${scriptId.slice(0, 8)}`);
-        
+
         // If script has scenes, fetch the segments
         if (scriptState.context.scenesCount > 0) {
           const data = await api.getScriptSegments(scriptId);
-          
+
           if (data.segments && data.segments.length > 0) {
             // Convert segments to script elements
             const scriptElements = api.convertSegmentsToScriptElements(data.segments);
-            
+
             // Only update if we got some elements
             if (scriptElements.length > 0) {
               setElements(scriptElements);
@@ -310,8 +330,8 @@ export function ScriptEditor({ scriptId, initialViewMode = 'script', scriptState
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (currentElement.type === 'scene-heading' &&
-          currentElement.content.trim() !== '' &&
-          !hasCompletedFirstScene) {
+        currentElement.content.trim() !== '' &&
+        !hasCompletedFirstScene) {
         setHasCompletedFirstScene(true);
         setActiveTab('scenes');
       }
@@ -589,10 +609,10 @@ Copyright: ${titlePage.copyright}
         setActiveProfile={setActiveProfile}
         suggestionsEnabled={suggestionsEnabled}
         setSuggestionsEnabled={setSuggestionsEnabled}
-        showGenerateScript={scriptState.showGenerateScriptButton && viewMode === 'beats'}
         onGenerateScript={handleGenerateScript}
-        // Pass the script state (extracted from the scriptState prop)
         scriptState={scriptState.state}
+        beatsAvailable={beatsAvailable}
+
       />
 
       <div className="flex-1 flex overflow-hidden">
@@ -627,14 +647,18 @@ Copyright: ${titlePage.copyright}
 
         {viewMode === 'beats' ? (
           <div className="flex-1 overflow-hidden">
-            <BeatSheetView 
-              title={title} 
+            <BeatSheetView
+              title={title}
               onSwitchToScript={() => setViewMode('script')}
               onGeneratedScriptElements={handleGeneratedScriptElements}
               currentSceneSegmentId={currentSceneSegmentId}
+              // beatsDisabled={beatsDisabled} // Pass the beatsDisabled state
+              beatsAvailable={beatsAvailable}
+
             />
           </div>
         ) : viewMode === 'boards' ? (
+
           <div className="flex-1 flex items-center justify-center bg-gray-100">
             <div className="text-center p-8">
               <h2 className="text-xl font-semibold text-gray-800 mb-4">Boards View</h2>
@@ -690,9 +714,9 @@ Copyright: ${titlePage.copyright}
                   </div>
                 ))}
               </div>
-              
+
               {scriptState.showGenerateNextSceneButton && (
-                <GenerateNextSceneButton 
+                <GenerateNextSceneButton
                   onClick={handleGenerateNextScene}
                   visible={true}
                 />
@@ -700,7 +724,7 @@ Copyright: ${titlePage.copyright}
             </div>
           </div>
         )}
-  
+
         {viewMode !== 'beats' && !isRightSidebarOpen && suggestionsEnabled && (
           <div className="absolute right-0 top-0 w-8 h-full z-20 flex items-center">
             <button
@@ -717,7 +741,7 @@ Copyright: ${titlePage.copyright}
             </button>
           </div>
         )}
-  
+
         {viewMode !== 'beats' && (
           <RightSidebar
             isOpen={isRightSidebarOpen}
@@ -727,7 +751,7 @@ Copyright: ${titlePage.copyright}
           />
         )}
       </div>
-  
+
       <TitlePageModal
         show={showTitlePageModal}
         onClose={() => setShowTitlePageModal(false)}
@@ -735,7 +759,7 @@ Copyright: ${titlePage.copyright}
         setTitlePage={setTitlePage}
         setTitle={setTitle}
       />
-  
+
       <SettingsModal
         show={showSettingsModal}
         onClose={() => setShowSettingsModal(false)}

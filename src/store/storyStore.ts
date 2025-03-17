@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { StoryState, Beat, ApiBeat, GeneratedScenesResponse, Scenes } from '../types/beats';
+import {api} from "../services/api";
 
 const mapActFromApi = (apiAct: string): Beat['act'] => {
   const actMap: Record<string, Beat['act']> = {
@@ -23,12 +24,21 @@ const mapActToApi = (act: Beat['act']): string => {
 };
 
 const calculatePosition = (beats: ApiBeat[], currentBeat: ApiBeat): { x: number; y: number } => {
-  const actBeats = beats.filter(b => b.beat_act === currentBeat.beat_act);
-  const positionInAct = actBeats.findIndex(b => b.beat_id === currentBeat.beat_id);
-  return {
-    x: positionInAct * 320 + 20,
-    y: 20
-  };
+  try {
+    const actBeats = beats.filter(b => b.beat_act === currentBeat.beat_act);
+    const positionInAct = actBeats.findIndex(b => b.beat_id === currentBeat.beat_id);
+    
+    // Return default position if calculation would result in NaN
+    if (positionInAct === -1) return { x: 20, y: 20 };
+    
+    return {
+      x: positionInAct * 320 + 20,
+      y: 20
+    };
+  } catch (error) {
+    console.error("Error calculating position:", error);
+    return { x: 0, y: 0 }; // Safe fallback
+  }
 };
 
 // Mock API response for local development to avoid API calls
@@ -85,6 +95,7 @@ export interface StoryStoreState extends StoryState {
 export const useStoryStore = create<StoryStoreState>((set, get) => ({
   title: '',
   premise: '',
+  scriptId: null,
   beats: [],
   isGeneratingActScenes: {
     'Act 1': false,
@@ -100,57 +111,26 @@ export const useStoryStore = create<StoryStoreState>((set, get) => ({
   },
   
   setPremise: (premise: string) => set({ premise }),
+  setScriptId: (id: string) => set({ scriptId: id }),
   
   // Fetch beats with safety checks
   fetchBeats: async () => {
     // Check if beats are already loaded to prevent duplicate fetches
-    if (get().beats.length > 0) {
+    const state = get();
+
+    if (state.beats.length > 0) {
       console.log("Beats already loaded, skipping fetch");
       return;
     }
+    const scriptId = state.scriptId;
+    
+    if (!scriptId) {
+      console.error("Cannot fetch beats: No script ID provided");
+      throw new Error("Script ID is required to fetch beats");
+    }
 
     try {
-      // Use local mock data for development to prevent API calls
-      const useLocalMock = process.env.NODE_ENV === 'development';
-      
-      let apiBeats: ApiBeat[];
-      
-      if (useLocalMock) {
-        // Mock data to avoid API calls
-        apiBeats = [
-          {
-            beat_id: 'beat-1',
-            beat_title: 'Opening Image',
-            beat_description: 'A visual that represents the struggle and tone of the story',
-            beat_act: 'act_1',
-            script_id: 'mock-script-id',
-            position: 1
-          },
-          {
-            beat_id: 'beat-2',
-            beat_title: 'Theme Stated',
-            beat_description: 'What the story is about is stated',
-            beat_act: 'act_1',
-            script_id: 'mock-script-id',
-            position: 2
-          },
-          {
-            beat_id: 'beat-3',
-            beat_title: 'Set-up',
-            beat_description: 'Characters and their world before the journey begins',
-            beat_act: 'act_1',
-            script_id: 'mock-script-id',
-            position: 3
-          }
-        ];
-        
-        // Simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 300));
-      } else {
-        // Actual API call
-        apiBeats = await fetch('/api/beats').then(res => res.json());
-      }
-      
+      const apiBeats = await api.getBeats(scriptId);
       const beats: Beat[] = apiBeats.map((apiBeat: ApiBeat) => ({
         id: apiBeat.beat_id,
         title: apiBeat.beat_title,
@@ -161,12 +141,11 @@ export const useStoryStore = create<StoryStoreState>((set, get) => ({
         isValidated: false,
         scenes: [],
       }));
-      
       set({ beats });
     } catch (error) {
       console.error('Failed to fetch beats:', error);
-      throw error;
     }
+
   },
   
   addBeat: (beat: Beat) =>

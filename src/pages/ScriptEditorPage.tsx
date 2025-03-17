@@ -2,8 +2,9 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { ScriptEditor } from '../components/ScriptEditor';
 import { useScriptState } from '../hooks/useScriptState';
-import { ViewMode } from '../types/screenplay';
+import { ViewMode, ScriptMetadata,  } from '../types/screenplay';
 import { AlertProvider, useAlert } from '../components/Alert';
+import {api, ScriptMetadataResponse} from "../services/api";
 
 /**
  * ScriptEditorPage component
@@ -18,7 +19,11 @@ function ScriptEditorPage() {
   
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [scriptMetadata, setScriptMetadata] = useState<ScriptMetadata | null>(null);
   const [initialViewMode, setInitialViewMode] = useState<ViewMode>('script');
+  // const [beatsDisabled, setBeatsDisabled] = useState(false);
+  const [beatsAvailable, setBeatsAvailable] = useState(true);
+
   
   // Use refs to track loading state and prevent duplicate API calls
   const hasInitializedRef = useRef(false);
@@ -33,45 +38,60 @@ function ScriptEditorPage() {
       console.log(`Script state changed to: ${newState}`);
     }
   });
+  function mapApiResponseToScriptMetadata(response: ScriptMetadataResponse): ScriptMetadata {
+    return {
+      id: response.id,
+      title: response.title,
+      creationMethod: response.creation_method,
+      createdAt: response.created_at,
+      updatedAt: response.updated_at,
+      isAiGenerated: response.creation_method === 'WITH_AI',
+      isUploaded: response.creation_method === 'UPLOAD',
+      currentSceneSegmentId: response.current_scene_segment_id,
+      uploadedFileType: response.creation_method === 'UPLOAD' ? 'pdf' : undefined // You might need to determine this based on available data
+    };
+  }
 
   // Initialize the view once when component mounts
   useEffect(() => {
-    // Only run this effect once
     if (hasInitializedRef.current) return;
     
-    try {
-      console.log("Starting script editor initialization");
-      setIsLoading(true);
-      setError(null);
-      
-      // Set view mode based on URL parameter or default
-      let viewMode: ViewMode = 'script';
-      
-      if (requestedView && ['beats', 'script', 'boards'].includes(requestedView)) {
-        // If URL has a valid view parameter, use it
-        viewMode = requestedView as ViewMode;
-        console.log(`Using view mode from URL: ${viewMode}`);
-      } else if (scriptState.isUploadedScript) {
-        // For uploaded scripts, always default to script view
-        viewMode = 'script';
-      } else {
-        // For AI-assisted scripts with no scenes yet, prefer beats view
-        viewMode = scriptState.context.hasBeats && scriptState.context.scenesCount === 0 ? 'beats' : 'script';
+    async function initializeScriptEditor() {
+      try {
+        setIsLoading(true);
+        setError(null);
+        
+        // Fetch script metadata
+        const metadata = await api.getScriptMetadata(scriptId);
+        const mappedMetadata = mapApiResponseToScriptMetadata(metadata);
+        setScriptMetadata(mappedMetadata);
+        
+        // Determine if beats are available based on creation method
+        const areBeatsAvailable = metadata.creation_method === 'WITH_AI';
+        setBeatsAvailable(areBeatsAvailable);
+        
+        // Set view mode based on URL parameter, creation method, and available content
+        let viewMode: ViewMode = 'script';
+        
+        if (requestedView && ['beats', 'script', 'boards'].includes(requestedView)) {
+          viewMode = requestedView as ViewMode;
+        } else if (metadata.creation_method === 'WITH_AI') {
+          viewMode = scriptState.context.hasBeats && scriptState.context.scenesCount === 0 ? 'beats' : 'script';
+        }
+        
+        setInitialViewMode(viewMode);
+      } catch (error) {
+        console.error('Failed to initialize script editor:', error);
+        setError(error instanceof Error ? error.message : 'Failed to load script');
+        showAlert('error', error instanceof Error ? error.message : 'Failed to load script');
+      } finally {
+        setIsLoading(false);
+        hasInitializedRef.current = true;
       }
-      
-      setInitialViewMode(viewMode);
-      console.log("Initialization complete, viewMode set to:", viewMode);
-      
-    } catch (error) {
-      console.error('Failed to initialize script editor:', error);
-      setError(error instanceof Error ? error.message : 'Failed to load script');
-      showAlert('error', error instanceof Error ? error.message : 'Failed to load script');
-    } finally {
-      console.log("Setting loading to false");
-      setIsLoading(false);
-      hasInitializedRef.current = true;
     }
-  }, [scriptId, requestedView, showAlert, scriptState.isUploadedScript, scriptState.context.hasBeats, scriptState.context.scenesCount]);
+    
+    initializeScriptEditor();
+  }, [scriptId, requestedView, showAlert, scriptState.context.hasBeats, scriptState.context.scenesCount]);
 
   // Implement safety timeout for loading
   useEffect(() => {

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { RefreshCcw, AlertCircle, FileText } from 'lucide-react';
+import { RefreshCcw, AlertCircle, FileText, RefreshCw } from 'lucide-react';
 import { BeatCard } from './BeatCard';
 import { ScenePanel } from './ScenePanel';
 import { BeatArrows } from './BeatArrows';
@@ -19,13 +19,17 @@ interface BeatSheetViewProps {
   onSwitchToScript?: () => void;
   onGeneratedScriptElements?: (elements: ScriptElement[], sceneSegmentId: string) => void;
   currentSceneSegmentId?: string | null;
+  // beatsDisabled?: boolean;
+  beatsAvailable?: boolean;
 }
 
 export function BeatSheetView({ 
   title = "Untitled Screenplay", 
   onSwitchToScript,
   onGeneratedScriptElements,
-  currentSceneSegmentId
+  currentSceneSegmentId,
+  // beatsDisabled = false
+  beatsAvailable = false
 }: BeatSheetViewProps) {
   const { scriptId } = useParams<{ scriptId: string }>();
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -36,6 +40,8 @@ export function BeatSheetView({
   const [sceneSegmentIdState, setSceneSegmentIdState] = useState<string | null>(null);
   const [scriptState, setScriptState] = useState<ScriptState>('empty');
   const { showAlert } = useAlert();
+  const [hasAttemptedBeatsLoad, setHasAttemptedBeatsLoad] = useState(false);
+
   
   // Ref to track if beats have been fetched to prevent duplicate API calls
   const beatsLoadedRef = useRef(false);
@@ -75,30 +81,44 @@ export function BeatSheetView({
 
   // Initial setup - only run once
   useEffect(() => {
+
+  // Set scriptId in the store
+  if (scriptId) {
+    useStoryStore.getState().setScriptId(scriptId);
+  }
+
+  
     // Only set premise if not already set
     if (!premise) {
-      console.log("Setting premise to:", title);
       useStoryStore.getState().setPremise(title || "Untitled Screenplay");
     }
     
-    // Only fetch beats if not already loaded and not currently fetching
-    if (beats.length === 0 && !beatsLoadedRef.current && scriptId) {
+    // Only fetch beats if not already loaded, not currently fetching, and beats are available
+    if (beats.length === 0 && !beatsLoadedRef.current && scriptId && beatsAvailable) {
+      console.log("Fetching beats for script:", scriptId);
       console.log("Fetching beats...");
       beatsLoadedRef.current = true; // Mark as fetching to prevent duplicate calls
       
       fetchBeats().then(() => {
         console.log("Beats fetched successfully");
         setScriptState('beatsLoaded');
+        setHasAttemptedBeatsLoad(true);
       }).catch(error => {
         console.error("Error fetching beats:", error);
         beatsLoadedRef.current = false; // Reset flag on error to allow retry
         showAlert('error', 'Failed to load beats. Please try again.');
+        setHasAttemptedBeatsLoad(true);
       });
     } else if (beats.length > 0 && scriptState === 'empty') {
       console.log("Beats already loaded, updating state");
       setScriptState('beatsLoaded');
+      setHasAttemptedBeatsLoad(true);
+    } else if (!beatsAvailable && !hasAttemptedBeatsLoad) {
+      // Mark as attempted if beats are not available
+      setHasAttemptedBeatsLoad(true);
     }
-  }, [premise, fetchBeats, title, scriptState, showAlert, beats.length, scriptId]);
+  }, [premise, fetchBeats, title, scriptState, showAlert, beats.length, scriptId, beatsAvailable, hasAttemptedBeatsLoad]);
+
 
   useEffect(() => {
     if (headerRef.current) {
@@ -218,16 +238,17 @@ export function BeatSheetView({
         <div className="relative">
           <button
             onClick={handleGenerateScript}
-            disabled={isGeneratingScript}
+            disabled={isGeneratingScript || !beatsAvailable}
             className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm ${
-              isGeneratingScript
+              isGeneratingScript || !beatsAvailable
                 ? 'text-gray-500 bg-gray-200 cursor-not-allowed'
                 : 'text-white bg-green-600 hover:bg-green-700'
             }`}
+            title={!beatsAvailable ? "AI generation is not available for this script type" : ""}
           >
             {isGeneratingScript ? (
               <>
-                <RefreshCcw className="w-4 h-4 mr-2 animate-spin" />
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
                 Generating...
               </>
             ) : (
@@ -241,6 +262,41 @@ export function BeatSheetView({
           </button>
         </div>
       </div>
+
+      {!beatsAvailable ? (
+        <div className="flex-1 flex items-center justify-center p-8 bg-gray-50">
+          <div className="text-center max-w-lg">
+            <AlertCircle className="w-12 h-12 mx-auto text-gray-400 mb-4" />
+            <h2 className="text-xl font-semibold text-gray-700 mb-2">AI Beats Not Available</h2>
+            <p className="text-gray-600 mb-4">
+              AI beats are not available for manually created scripts. Please use the script editor to write your screenplay.
+            </p>
+            <button
+              onClick={() => onSwitchToScript?.()}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            >
+              Go to Script Editor
+            </button>
+          </div>
+        </div>
+      ) : beats.length === 0 && hasAttemptedBeatsLoad ? (
+        <div className="flex-1 flex items-center justify-center p-8 bg-gray-50">
+          <div className="text-center max-w-lg">
+            <AlertCircle className="w-12 h-12 mx-auto text-gray-400 mb-4" />
+            <h2 className="text-xl font-semibold text-gray-700 mb-2">No Beats Found</h2>
+            <p className="text-gray-600 mb-4">
+              We couldn't find any story beats for this script. You can switch to the script editor to start writing.
+            </p>
+            <button
+              onClick={() => onSwitchToScript?.()}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            >
+              Go to Script Editor
+            </button>
+          </div>
+        </div>
+      ) : (
+
 
       <div className="flex-1 overflow-hidden relative">
         <div className="h-full flex">
@@ -338,6 +394,8 @@ export function BeatSheetView({
           </div>
         )}
       </div>
+    )}
     </div>
   );
+
 }
